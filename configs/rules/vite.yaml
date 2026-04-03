@@ -1,0 +1,8 @@
+version: v1
+rules:
+  - id: vite-production-sourcemap
+    frameworks: [vite, react, vue]
+    file: vite.config.ts
+    mustNotFind: "sourcemap: true"
+    severity: high
+    summary: "Production builds must not enable sourcemaps"

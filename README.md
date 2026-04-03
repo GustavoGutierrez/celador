@@ -2,23 +2,22 @@
 
 > "The security deadlock for your dependencies."
 
-Celador is an ultra-fast, zero-trust supply chain security CLI for modern JavaScript/TypeScript ecosystems. Written in Go and powered by a beautiful Bubble Tea terminal interface, Celador proactively scans, blocks, and remediates malicious packages, framework misconfigurations, and code vulnerabilities (like SQLi and XSS) before they infect your system.
+Celador is a zero-trust supply chain security CLI for modern JavaScript/TypeScript ecosystems. Written in Go, Celador scans dependencies, flags risky framework configuration, and helps apply conservative remediations with deterministic non-interactive behavior.
 
 ## 🚀 Features
 
-- **`celador init` (Guided Setup):** Instantly integrates Celador into your project, automatically detects your package manager, injects hardening rules into `.npmrc`/`bunfig`, and sets up Git hooks to prevent committing vulnerable code.
+- **`celador init` (Guided Setup):** Detects your package manager, merges hardening rules into supported config files, refreshes managed guidance blocks, and can install a Git hook only when explicitly requested.
 - **`celador install` (Zero-Trust Wrapper):** Automatically detects your package manager, downloads tarballs into a temporary sandbox, and performs heuristic analysis (detecting network requests with env vars) *before* installing anything.
-- **`celador scan` (Lightning Fast OSV Scanning):** Uses Google's OSV.dev batch API combined with a local lockfile-hash cache fallback to audit your dependencies in milliseconds without unnecessary network overhead.
+- **`celador scan` (Deterministic OSV Scanning):** Uses Google's OSV.dev batch API with a lockfile-fingerprint cache and TTL-based OSV cache for repeat scans and offline-friendly fallback indicators.
 - **Framework Fingerprinting & SAST:** 
   - Validates **Next.js**, **Nuxt.js**, **SvelteKit**, and **Strapi** config files to prevent source code leaks, SSRF, and default cryptographic keys.
   - Mitigates **Tailwind CSS v4** XSS risks by detecting dynamic arbitrary value interpolation (`bg-[${input}]`).
-  - Detects **SQL Injection** vulnerabilities in raw database queries.
 - **Proactive Hardening:** 
   - Disables arbitrary `postinstall` scripts (`ignore-scripts=true`).
   - Sets `minimumReleaseAge: 1440` (24 hours) to prevent Day-0 hijacked package installations.
   - Automatically fixes `.gitignore` to prevent leaking `.env.local` and sourcemaps (`*.map.js`).
 - **AI Agent Guidelines:** Automatically provisions `AGENTS.md` and `CLAUDE.md` with strict rules to prevent AI coding assistants from introducing vulnerable dependency patterns, and includes an `llm.txt` file for complete AI context.
-- **Smart Remediation:** Use `celador fix --auto` to apply Safe SemVer bumps, or use `celador fix --pr` to automatically generate Git branches and Pull Requests.
+- **Smart Remediation:** Use `celador fix --diff` to preview conservative version bumps and `celador fix --yes` to apply supported manifest changes without an interactive prompt.
 
 ## 📦 Installation
 
@@ -47,25 +46,26 @@ celador install express
 ```
 
 ### 3. Audit and Fix
-Run an interactive audit utilizing our beautiful TUI, and fix issues proactively:
+Run a deterministic audit and preview conservative remediations:
 ```bash
-celador scan --staged
-celador fix --interactive
-celador fix --pr # Automatically create Git branches and PRs for fixes
+celador scan
+celador fix --diff
+celador fix --yes
 ```
 
-### 4. Generate Reports
-Export to standard enterprise formats for CI/CD pipelines (SARIF, CycloneDX with VEX):
+### 4. Install with preflight
+Inspect npm-compatible package metadata before delegating to the package manager:
 ```bash
-celador report --format=sarif --out=security.sarif
+celador install express
+celador install left-pad --yes
 ```
 
 ## 🏗️ Architecture & Contributing
 
-Celador is built using **Hexagonal Architecture (Ports & Adapters)** in Go. 
+Celador is built using **Hexagonal Architecture (Ports & Adapters)** in Go.
 - The project strictly follows **Spec Driven Development (SDD)**. Specs and behavioral tests must be written before implementation.
 - All codebase elements, comments, and internal Software Design Documents are strictly written in **English**.
-- The UI is powered by `charmbracelet/bubbletea` and CLI routing by `spf13/cobra`.
+- CLI routing is powered by `spf13/cobra`, with plain-text output as the default runtime surface.
 - Follows standard Go project layout and strict naming conventions.
 - Comprehensive Unit Tests cover all domains.
 
