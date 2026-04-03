@@ -23,7 +23,7 @@ The repository is organized around a standard Go project layout:
 - Detects workspace characteristics and package-manager context.
 - Applies hardening defaults for supported package-manager configuration files.
 - Manages project AI guidance files through preserved managed blocks.
-- Generates or updates `AGENTS.md`, `CLAUDE.md`, and `llm.txt` without clobbering unrelated user content.
+- Creates or updates `AGENTS.md`, updates `CLAUDE.md` only when it already exists, and preserves unrelated user content.
 - Can install a pre-commit hook when `--install-hook` is explicitly requested.
 
 #### `celador scan`

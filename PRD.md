@@ -121,8 +121,8 @@ Al detectar frameworks, Celador audita sus archivos de configuración específic
 
 ## 5. Integración y Documentación para Agentes de IA
 
-### 5.1. Reglas de Inyección en Proyecto (`AGENTS.md`)
-Celador inyectará automáticamente en la raíz del proyecto (en `AGENTS.md` y `CLAUDE.md`) el siguiente bloque para gobernar a los LLMs:
+### 5.1. Project Guidance Injection (`AGENTS.md`)
+Celador injects the managed guidance block into `AGENTS.md` in the target project root. If `CLAUDE.md` already exists, Celador may update the same managed block there as well. Celador must not create `CLAUDE.md` when the file is absent.
 
 ```markdown
 <!-- celador:start -->
@@ -143,13 +143,8 @@ This project has been hardened against supply chain attacks using [Celador](http
 <!-- celador:end -->
 ```
 
-### 5.2. Autogeneración de Documentación para LLMs (`llm.txt`)
-Al finalizar la implementación del CLI, se debe generar y mantener actualizado un archivo `llm.txt` en la raíz del repositorio de Celador. Este archivo está diseñado específicamente para ser consumido por herramientas de IA (Claude, Cursor, Copilot, etc.) y debe contener:
-- Una explicación exhaustiva de cómo funciona el CLI completo.
-- Todos los comandos disponibles (`scan`, `install`, `fix`, `report`) con sus respectivos *flags*.
-- Las variaciones exactas de comportamiento y comandos dependiendo de si el usuario final está en un entorno Node.js (npm), pnpm, Bun o Deno.
-- Ejemplos claros de cómo un LLM debe sugerir la remediación de vulnerabilidades usando Celador.
-- Contexto sobre cómo Celador maneja internamente las reglas de Zero-Trust para que el LLM no intente sobreescribir configuraciones de seguridad ya mitigadas por la herramienta.
+### 5.2. Repository LLM Documentation (`llm.txt`)
+Celador must maintain an `llm.txt` file in the root of the Celador repository itself. This file is intended for AI tools working on or with Celador and must explain the CLI commands, usage modes, package-manager differences, and the correct behavior of `celador init`. `llm.txt` is repository documentation and must not be created in target projects during `celador init`.
 
 ### 5.3. README.md
 Solo si necesitas saber de que se trata este proyecto puedes leer el archivo README.md, pero el código fuente, los comentarios y la documentación interna del proyecto DEBEN estar en inglés para asegurar la máxima colaboración open-source y claridad técnica.

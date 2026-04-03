@@ -1,0 +1,84 @@
+# Celador CLI Guide for LLMs
+
+Celador is a Go CLI for zero-trust dependency and supply-chain hardening in JavaScript, TypeScript, and Deno workspaces.
+
+Use this file when assisting users in this repository or when explaining how to use the `celador` command.
+
+## Core command model
+
+- `celador init`
+  - Bootstraps Celador in the current workspace.
+  - Writes or merges `.celador.yaml`.
+  - Ensures `.celadorignore` exists.
+  - Appends missing recommended entries to `.gitignore` and `.npmignore`.
+  - Appends `.celador/` to `.gitignore` if missing.
+  - Applies supported package-manager hardening (`.npmrc`, `bunfig.toml`, or `deno.json`).
+  - Creates or updates `AGENTS.md` with the managed Celador guidance block.
+  - Updates `CLAUDE.md` only if `CLAUDE.md` already exists.
+  - Does not create `llm.txt` in target projects.
+  - Validates strict `package.json` engine versions when `package.json` is present.
+
+- `celador scan`
+  - Scans supported lockfiles for dependency vulnerabilities.
+  - Applies built-in framework rules.
+  - Uses cache-aware OSV lookups.
+  - Respects `.celadorignore` entries.
+
+- `celador fix`
+  - Generates conservative remediation plans.
+  - Updates `package.json` dependency declarations and overrides when supported.
+  - Does not promise full lockfile mutation.
+
+- `celador install <package>`
+  - Performs Celador risk checks before handing off to the package manager.
+  - Supported install handoff is centered on npm, pnpm, and Bun.
+
+- `celador about`
+  - Shows repository and developer guidance.
+
+- `celador tui`
+  - Opens the Bubble Tea terminal UI when a TTY is available.
+
+- `celador --version`
+  - Prints the current version and may provide upgrade guidance.
+
+## Usage rules for LLMs
+
+- Prefer exact commands over vague descriptions.
+- Preserve deterministic behavior; do not suggest bypassing lockfiles.
+- Do not suggest `^` or `~` dependency ranges when Celador-managed guidance applies.
+- Treat generated guidance blocks as managed content.
+- When describing `init`, be precise about file behavior:
+  - `AGENTS.md`: create or update
+  - `CLAUDE.md`: update only if already present
+  - `llm.txt`: repository documentation file, not a target-project artifact
+
+## Common command examples
+
+```bash
+celador --version
+celador about
+celador tui
+celador init
+celador init --install-hook
+celador --no-interactive scan
+celador fix --diff
+celador fix --yes
+celador install express
+```
+
+## Workspace guidance
+
+- npm/pnpm workspaces: `init` writes `.npmrc` hardening.
+- Bun workspaces: `init` writes `bunfig.toml` hardening.
+- Deno workspaces: `init` writes `deno.json` hardening and `scan` remains the primary workflow.
+
+## Documentation sources
+
+Prefer these files when answering questions about Celador:
+
+- `README.md`
+- `docs/commands.md`
+- `docs/configuration.md`
+- `docs/security-rules.md`
+- `docs/TECHNICAL_SUMMARY.md`

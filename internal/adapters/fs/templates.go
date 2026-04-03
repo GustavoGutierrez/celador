@@ -11,17 +11,10 @@ import (
 const (
 	managedStart = "<!-- celador:start -->"
 	managedEnd   = "<!-- celador:end -->"
-	llmStart     = "# celador:start"
-	llmEnd       = "# celador:end"
 )
 
 func WriteManagedBlock(ctx context.Context, fs ports.FileSystem, path string, block string) error {
 	return WriteManagedSection(ctx, fs, path, managedStart, managedEnd, block)
-}
-
-func WriteManagedLLM(ctx context.Context, fs ports.FileSystem, path string, body string) error {
-	block := llmStart + "\n" + strings.TrimSpace(body) + "\n" + llmEnd
-	return WriteManagedSection(ctx, fs, path, llmStart, llmEnd, block)
 }
 
 func WriteManagedSection(ctx context.Context, fs ports.FileSystem, path string, startMarker string, endMarker string, block string) error {

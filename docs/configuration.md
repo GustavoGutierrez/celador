@@ -87,8 +87,7 @@ Current matching behavior:
 ### Guidance files
 
 - `AGENTS.md`
-- `CLAUDE.md`
-- `llm.txt`
+- `CLAUDE.md` only when it already exists
 
 ### Optional hook
 
@@ -98,12 +97,16 @@ Current matching behavior:
 
 ### Ignore hygiene
 
-Celador appends these entries to `.gitignore` and `.npmignore` if they are missing:
+Celador appends these entries to `.gitignore` and `.npmignore` if they are missing, preserving any existing content already in those files:
 
 - `.env.local`
 - `*.map.js`
 - `*.js.map`
 - `coverage/`
+
+Celador also appends this cache entry to `.gitignore` when it is missing:
+
+- `.celador/`
 
 ### npm and pnpm workspaces
 
@@ -139,11 +142,6 @@ For `AGENTS.md` and `CLAUDE.md`, Celador manages only the section between:
 <!-- celador:end -->
 ```
 
-For `llm.txt`, Celador manages the section between:
-
-```text
-# celador:start
-# celador:end
-```
-
 Content outside those markers is preserved.
+
+`celador init` always creates or updates `AGENTS.md`. It only touches `CLAUDE.md` when that file is already present in the target workspace. It does not create `llm.txt` in target workspaces.

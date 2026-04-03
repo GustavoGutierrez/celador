@@ -84,9 +84,10 @@ Behavior:
 - detects the workspace package manager and frameworks
 - writes or merges `.celador.yaml`
 - ensures `.celadorignore` exists
-- updates `.gitignore` and `.npmignore`
+- appends missing recommended entries to `.gitignore` and `.npmignore`
 - applies package-manager hardening config
-- updates managed guidance in `AGENTS.md`, `CLAUDE.md`, and `llm.txt`
+- creates or updates managed guidance in `AGENTS.md`
+- updates managed guidance in `CLAUDE.md` only when that file already exists
 - validates strict `package.json` `engines`
 
 Important constraints:

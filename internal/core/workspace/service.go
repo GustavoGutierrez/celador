@@ -60,7 +60,7 @@ func (s *Service) Run(ctx context.Context, root string, tty bool, ci bool, insta
 	if err := s.ensureGuidanceFiles(ctx, ws); err != nil {
 		return Result{}, err
 	}
-	messages = append(messages, "updated AGENTS.md, CLAUDE.md, and llm.txt")
+	messages = append(messages, "updated managed guidance files")
 	if err := s.validateEngines(ctx, ws); err != nil {
 		return Result{}, err
 	}
@@ -106,11 +106,15 @@ func (s *Service) ensureIgnoreTemplate(ctx context.Context, ws shared.Workspace)
 }
 
 func (s *Service) ensureIgnoreFiles(ctx context.Context, ws shared.Workspace) error {
-	for _, name := range []string{".gitignore", ".npmignore"} {
+	requiredEntries := map[string][]string{
+		".gitignore": {".env.local", "*.map.js", "*.js.map", "coverage/", ".celador/"},
+		".npmignore": {".env.local", "*.map.js", "*.js.map", "coverage/"},
+	}
+	for name, entries := range requiredEntries {
 		path := filepath.Join(ws.Root, name)
 		content, _ := s.fs.ReadFile(ctx, path)
 		lines := string(content)
-		for _, required := range []string{".env.local", "*.map.js", "*.js.map", "coverage/"} {
+		for _, required := range entries {
 			if !strings.Contains(lines, required) {
 				if len(lines) > 0 && !strings.HasSuffix(lines, "\n") {
 					lines += "\n"
@@ -154,14 +158,19 @@ This project has been hardened against supply chain attacks using Celador.
 - No raw SQL interpolation.
 <!-- celador:end -->
 `
-	llm := "# Celador LLM Guide\n\nCommands: init, scan, fix, install.\nUse exact versions, preserve lockfiles, and prefer deterministic installs.\nNode managers: npm/pnpm/bun can use install handoff. Deno v1 support is scan-focused."
-	for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
-		path := filepath.Join(ws.Root, name)
-		if err := fsadapter.WriteManagedBlock(ctx, s.fs, path, managedBlock); err != nil {
+	agentsPath := filepath.Join(ws.Root, "AGENTS.md")
+	if err := fsadapter.WriteManagedBlock(ctx, s.fs, agentsPath, managedBlock); err != nil {
+		return err
+	}
+	claudePath := filepath.Join(ws.Root, "CLAUDE.md")
+	if exists, err := s.fs.Stat(ctx, claudePath); err != nil {
+		return fmt.Errorf("stat CLAUDE.md: %w", err)
+	} else if exists {
+		if err := fsadapter.WriteManagedBlock(ctx, s.fs, claudePath, managedBlock); err != nil {
 			return err
 		}
 	}
-	return fsadapter.WriteManagedLLM(ctx, s.fs, filepath.Join(ws.Root, "llm.txt"), llm)
+	return nil
 }
 
 func (s *Service) validateEngines(ctx context.Context, ws shared.Workspace) error {
