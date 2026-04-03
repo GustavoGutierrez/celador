@@ -24,15 +24,16 @@ Celador is a zero-trust supply chain security CLI for modern JavaScript/TypeScri
 Celador is distributed as a precompiled Go CLI binary:
 
 ```bash
-# install directly from the published Homebrew formula on the homebrew-tap branch
-brew install https://raw.githubusercontent.com/GustavoGutierrez/celador/homebrew-tap/Formula/celador.rb
+# Homebrew tap repository: GustavoGutierrez/homebrew-celador
+brew tap GustavoGutierrez/celador
+brew install GustavoGutierrez/celador/celador
 
 # or download a release archive from GitHub Releases
 # https://github.com/GustavoGutierrez/celador/releases
 ```
 
-Homebrew cannot tap a non-default branch directly, so the supported install path for this
-same-repository tap setup is the raw formula URL above.
+The `brew tap GustavoGutierrez/celador` command works because Homebrew resolves it to the dedicated
+tap repository `GustavoGutierrez/homebrew-celador`.
 
 ## 🛠️ Usage
 

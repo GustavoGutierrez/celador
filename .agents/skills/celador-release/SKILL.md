@@ -1,6 +1,6 @@
 ---
 name: celador-release
-description: Publish a Celador GitHub release with GoReleaser assets and Homebrew tap synchronization. Trigger: When preparing or verifying a Celador release, tagging a version, or updating the tap branch.
+description: Publish a Celador GitHub release with GoReleaser assets and dedicated Homebrew tap synchronization. Trigger: When preparing or verifying a Celador release, tagging a version, or updating the tap repository.
 ---
 
 # Celador Release Publishing
@@ -9,13 +9,13 @@ description: Publish a Celador GitHub release with GoReleaser assets and Homebre
 
 - Publishing a new Celador version
 - Re-running a failed release for an existing tag
-- Verifying GitHub release assets or the Homebrew tap branch
+- Verifying GitHub release assets or the Homebrew tap repository
 
 ## Release source of truth
 
 - Workflow: `.github/workflows/release.yml`
 - GoReleaser config: `.goreleaser.yaml`
-- Homebrew formula template: `homebrew-tap/Formula/celador.rb`
+- Homebrew formula template: `packaging/homebrew/Formula/celador.rb`
 
 ## Standard publish flow
 
@@ -24,6 +24,7 @@ description: Publish a Celador GitHub release with GoReleaser assets and Homebre
    ```bash
    go test ./...
    go run github.com/goreleaser/goreleaser/v2@v2.8.2 check --config .goreleaser.yaml
+   ruby -c packaging/homebrew/Formula/celador.rb
    ```
 
 2. Create and push the release tag:
@@ -57,9 +58,9 @@ For tag `vX.Y.Z`, the release should include:
 ## Homebrew behavior
 
 - The workflow downloads `checksums.txt` from the GitHub release.
-- It renders `homebrew-tap/Formula/celador.rb` with the current version and sha256 values.
-- It creates or updates the `homebrew-tap` branch automatically.
-- The published tap branch contains `Formula/celador.rb` at the repository root.
+- It renders `packaging/homebrew/Formula/celador.rb` with the current version and sha256 values.
+- It pushes the rendered formula to `GustavoGutierrez/homebrew-celador`.
+- The tap repository is consumed with `brew tap GustavoGutierrez/celador`.
 
 ## Verification
 
@@ -69,26 +70,33 @@ Check release assets:
 gh release view vX.Y.Z --repo GustavoGutierrez/celador --json assets
 ```
 
-Check the tap branch formula:
+Check the tap repository formula:
 
 ```bash
-git fetch origin homebrew-tap
-git show origin/homebrew-tap:Formula/celador.rb
+gh repo view GustavoGutierrez/homebrew-celador
+gh api repos/GustavoGutierrez/homebrew-celador/contents/Formula/celador.rb?ref=HEAD
 ```
 
 Optional Homebrew install verification:
 
 ```bash
-brew install https://raw.githubusercontent.com/GustavoGutierrez/celador/homebrew-tap/Formula/celador.rb
-brew upgrade celador
+brew tap GustavoGutierrez/celador
+brew install GustavoGutierrez/celador/celador
 celador --help
 ```
 
-Homebrew does not support tapping a non-default branch directly, so Celador should be installed
-from the raw formula URL published on the `homebrew-tap` branch.
+Homebrew resolves `brew tap GustavoGutierrez/celador` to the dedicated repository
+`GustavoGutierrez/homebrew-celador`, so this is the correct long-term install flow.
+
+## Authentication requirement
+
+The source repository workflow must use `HOMEBREW_TAP_GITHUB_TOKEN` to push to the separate tap
+repository. A fine-grained token with `Contents: Read and write` on
+`GustavoGutierrez/homebrew-celador` is sufficient.
 
 ## Failure handling
 
 - If `goreleaser check` fails, fix the release configuration before tagging.
-- If the release job succeeds but the tap update fails, rerun `release.yml` for the same tag.
+- If the release job succeeds but the tap update fails, rerun `release.yml` for the same tag after
+  confirming `GustavoGutierrez/homebrew-celador` exists and `HOMEBREW_TAP_GITHUB_TOKEN` is valid.
 - If `checksums.txt` is missing expected asset names, inspect `.goreleaser.yaml` archive naming first.
