@@ -70,16 +70,14 @@ repository `GustavoGutierrez/homebrew-celador`.
 
 ## Authentication requirement
 
-The workflow needs a cross-repository token to update the tap repository.
+The workflow needs a cross-repository credential to update the tap repository.
 
-Configure a secret named `HOMEBREW_TAP_GITHUB_TOKEN` in `GustavoGutierrez/celador` with permission
-to push to `GustavoGutierrez/homebrew-celador`.
+Configure a secret named `HOMEBREW_TAP_SSH_KEY` in `GustavoGutierrez/celador`.
 
 Recommended setup:
 
-- Fine-grained personal access token
-- Repository access: `GustavoGutierrez/homebrew-celador`
-- Permission: `Contents` → `Read and write`
+- Create a dedicated write-enabled deploy key on `GustavoGutierrez/homebrew-celador`
+- Store the private key as the `HOMEBREW_TAP_SSH_KEY` repository secret in `GustavoGutierrez/celador`
 
 The default `GITHUB_TOKEN` from the source repository is not sufficient for this cross-repository
 push.
@@ -134,7 +132,7 @@ that repository, but it does not create GitHub repositories automatically.
 
 ### The tap publish step cannot authenticate
 
-Confirm that `HOMEBREW_TAP_GITHUB_TOKEN` exists and has write access to the tap repository.
+Confirm that `HOMEBREW_TAP_SSH_KEY` exists and matches a write-enabled deploy key on the tap repository.
 
 ## Release checklist
 
@@ -142,7 +140,7 @@ Confirm that `HOMEBREW_TAP_GITHUB_TOKEN` exists and has write access to the tap 
 - [ ] Run `go run github.com/goreleaser/goreleaser/v2@v2.8.2 check --config .goreleaser.yaml`
 - [ ] Run `ruby -c packaging/homebrew/Formula/celador.rb`
 - [ ] Ensure `GustavoGutierrez/homebrew-celador` exists
-- [ ] Ensure `HOMEBREW_TAP_GITHUB_TOKEN` is configured
+- [ ] Ensure `HOMEBREW_TAP_SSH_KEY` is configured
 - [ ] Push the release tag `vX.Y.Z`
 - [ ] Wait for `release.yml` to finish
 - [ ] Confirm GitHub release assets exist

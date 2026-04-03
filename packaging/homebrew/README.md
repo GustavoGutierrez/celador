@@ -43,8 +43,7 @@ On every tagged release (`v*`) the GitHub Actions release workflow:
 
 Cross-repository updates cannot rely on the source repository's default `GITHUB_TOKEN`.
 
-Create a repository secret named `HOMEBREW_TAP_GITHUB_TOKEN` in `GustavoGutierrez/celador` with a
-token that can push to `GustavoGutierrez/homebrew-celador`.
+Create a repository secret named `HOMEBREW_TAP_SSH_KEY` in `GustavoGutierrez/celador`.
 
-A fine-grained personal access token with `Contents: Read and write` access to the tap repository is
-sufficient.
+That secret must contain the private half of a write-enabled deploy key registered on
+`GustavoGutierrez/homebrew-celador`.

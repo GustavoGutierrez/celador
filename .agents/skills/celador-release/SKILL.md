@@ -90,13 +90,13 @@ Homebrew resolves `brew tap GustavoGutierrez/celador` to the dedicated repositor
 
 ## Authentication requirement
 
-The source repository workflow must use `HOMEBREW_TAP_GITHUB_TOKEN` to push to the separate tap
-repository. A fine-grained token with `Contents: Read and write` on
-`GustavoGutierrez/homebrew-celador` is sufficient.
+The source repository workflow must use `HOMEBREW_TAP_SSH_KEY` to push to the separate tap
+repository. That secret should contain the private half of a write-enabled deploy key registered on
+`GustavoGutierrez/homebrew-celador`.
 
 ## Failure handling
 
 - If `goreleaser check` fails, fix the release configuration before tagging.
 - If the release job succeeds but the tap update fails, rerun `release.yml` for the same tag after
-  confirming `GustavoGutierrez/homebrew-celador` exists and `HOMEBREW_TAP_GITHUB_TOKEN` is valid.
+  confirming `GustavoGutierrez/homebrew-celador` exists and `HOMEBREW_TAP_SSH_KEY` is valid.
 - If `checksums.txt` is missing expected asset names, inspect `.goreleaser.yaml` archive naming first.

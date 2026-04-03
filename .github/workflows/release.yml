@@ -124,19 +124,15 @@ jobs:
             --clobber
 
       - name: Verify tap publishing configuration
-        env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ -z "${GH_TOKEN}" ]; then
-            echo "HOMEBREW_TAP_GITHUB_TOKEN is required to publish Formula/celador.rb to GustavoGutierrez/homebrew-celador." >&2
-            echo "Create a fine-grained token with Contents: Read and write on the tap repository and save it as a repository secret." >&2
+          if [ -z "${{ secrets.HOMEBREW_TAP_SSH_KEY }}" ]; then
+            echo "HOMEBREW_TAP_SSH_KEY is required to publish Formula/celador.rb to GustavoGutierrez/homebrew-celador." >&2
+            echo "Create a write-enabled deploy key for GustavoGutierrez/homebrew-celador and save the private key as a repository secret." >&2
             exit 1
           fi
-
-          gh repo view "GustavoGutierrez/homebrew-celador" >/dev/null
 
       - name: Render Homebrew formula
         env:
@@ -159,7 +155,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: GustavoGutierrez/homebrew-celador
-          token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          ssh-key: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
           path: homebrew-celador
 
       - name: Publish tap repository contents
