@@ -88,6 +88,7 @@ type ScanResult struct {
 
 type FixOperation struct {
 	File            string
+	ManifestSection string
 	PackageName     string
 	CurrentVersion  string
 	ProposedVersion string
@@ -97,10 +98,25 @@ type FixOperation struct {
 	RequiresInstall bool
 }
 
+type FixPlanReasonCategory string
+
+const (
+	FixPlanReasonNoFixedVersion FixPlanReasonCategory = "no_fixed_version"
+	FixPlanReasonManualChange   FixPlanReasonCategory = "manual_change"
+	FixPlanReasonOutsideScope   FixPlanReasonCategory = "outside_scope"
+)
+
+type FixPlanReason struct {
+	Category FixPlanReasonCategory
+	Count    int
+	Examples []string
+}
+
 type FixPlan struct {
 	Operations []FixOperation
 	Summary    string
 	DryRunDiff string
+	Reasons    []FixPlanReason
 }
 
 type RulePack struct {
@@ -129,4 +145,26 @@ type InstallAssessment struct {
 	Manager       PackageManager
 	ShouldPrompt  bool
 	SuggestedArgs []string
+}
+
+type Overview struct {
+	Title                string
+	Subtitle             string
+	Developer            string
+	GitHubProfile        string
+	CurrentVersion       string
+	LatestVersion        string
+	UpdateAvailable      bool
+	InstalledViaHomebrew bool
+	UpgradeCommand       string
+	Commands             []OverviewCommand
+	QuickStart           []string
+	Documentation        []string
+}
+
+type OverviewCommand struct {
+	Name        string
+	Summary     string
+	Example     string
+	Interactive bool
 }

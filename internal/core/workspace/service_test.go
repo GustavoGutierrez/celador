@@ -60,6 +60,106 @@ func TestRunPreservesUnrelatedWorkspaceContent(t *testing.T) {
 	}
 }
 
+func TestDetectFallsBackToNPMWhenPackageJSONExistsWithoutLockfile(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fs := fsadapter.NewOSFileSystem(root)
+	ctx := context.Background()
+	manifest := filepath.Join(root, "package.json")
+	mustWriteWorkspaceFile(t, fs, manifest, `{"name":"demo","dependencies":{"react":"18.0.0"}}`)
+
+	detector := NewDetector(fs)
+	ws, err := detector.Detect(ctx, root, false, true)
+	if err != nil {
+		t.Fatalf("detect: %v", err)
+	}
+	if ws.PackageManager != shared.PackageManagerNPM {
+		t.Fatalf("expected npm fallback, got %s", ws.PackageManager)
+	}
+	if ws.ManifestPath != manifest {
+		t.Fatalf("expected manifest path %s, got %s", manifest, ws.ManifestPath)
+	}
+}
+
+func TestDetectInfersManagerFromWorkspaceFilesWithoutLockfile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		files    map[string]string
+		want     shared.PackageManager
+		manifest string
+	}{
+		{
+			name: "package manager field",
+			files: map[string]string{
+				"package.json": `{"name":"demo","packageManager":"pnpm@9.0.0"}`,
+			},
+			want: shared.PackageManagerPNPM,
+		},
+		{
+			name: "pnpm workspace file",
+			files: map[string]string{
+				"package.json":        `{"name":"demo"}`,
+				"pnpm-workspace.yaml": "packages:\n  - apps/*\n",
+			},
+			want: shared.PackageManagerPNPM,
+		},
+		{
+			name: "bun config file",
+			files: map[string]string{
+				"package.json": `{"name":"demo"}`,
+				"bunfig.toml":  "[install]\nsaveExact=true\n",
+			},
+			want: shared.PackageManagerBun,
+		},
+		{
+			name: "deno config file",
+			files: map[string]string{
+				"deno.json": `{"lock":true}`,
+			},
+			want: shared.PackageManagerDeno,
+		},
+	}
+
+	for _, tt := range tests {
+		tc := tt
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			fs := fsadapter.NewOSFileSystem(root)
+			for name, body := range tc.files {
+				mustWriteWorkspaceFile(t, fs, filepath.Join(root, name), body)
+			}
+
+			ws, err := NewDetector(fs).Detect(context.Background(), root, false, true)
+			if err != nil {
+				t.Fatalf("detect: %v", err)
+			}
+			if ws.PackageManager != tc.want {
+				t.Fatalf("expected %s, got %s", tc.want, ws.PackageManager)
+			}
+		})
+	}
+}
+
+func TestDetectRemainsUnknownForUnsupportedExplicitManagerWithoutOtherSignals(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fs := fsadapter.NewOSFileSystem(root)
+	mustWriteWorkspaceFile(t, fs, filepath.Join(root, "package.json"), `{"name":"demo","packageManager":"yarn@4.1.0"}`)
+
+	ws, err := NewDetector(fs).Detect(context.Background(), root, false, true)
+	if err != nil {
+		t.Fatalf("detect: %v", err)
+	}
+	if ws.PackageManager != shared.PackageManagerUnknown {
+		t.Fatalf("expected unknown package manager, got %s", ws.PackageManager)
+	}
+}
+
 func mustWriteWorkspaceFile(t *testing.T, fs interface {
 	WriteFile(context.Context, string, []byte) error
 }, path string, body string) {

@@ -14,11 +14,13 @@ import (
 	fsadapter "github.com/GustavoGutierrez/celador/internal/adapters/fs"
 	osvadapter "github.com/GustavoGutierrez/celador/internal/adapters/osv"
 	pmadapter "github.com/GustavoGutierrez/celador/internal/adapters/pm"
+	releasesadapter "github.com/GustavoGutierrez/celador/internal/adapters/releases"
 	rulesadapter "github.com/GustavoGutierrez/celador/internal/adapters/rules"
 	tuiadapter "github.com/GustavoGutierrez/celador/internal/adapters/tui"
 	"github.com/GustavoGutierrez/celador/internal/core/audit"
 	"github.com/GustavoGutierrez/celador/internal/core/fix"
 	"github.com/GustavoGutierrez/celador/internal/core/install"
+	versioncore "github.com/GustavoGutierrez/celador/internal/core/version"
 	"github.com/GustavoGutierrez/celador/internal/core/workspace"
 	"github.com/GustavoGutierrez/celador/internal/ports"
 	"github.com/spf13/cobra"
@@ -65,6 +67,7 @@ type Runtime struct {
 	InitSvc   *workspace.Service
 	FixSvc    *fix.Service
 	InstallSv *install.Service
+	VersionSv *versioncore.Service
 	RootCmd   *cobra.Command
 }
 
@@ -107,6 +110,8 @@ func NewBootstrap(ctx context.Context, args []string) (*Bootstrap, error) {
 	metadata := osvadapter.NewRegistryInspector()
 	pm := pmadapter.NewExecutor(os.Stdout, os.Stderr)
 	patches := fsadapter.NewPatchWriter(fs)
+	executablePath, _ := os.Executable()
+	versionSvc := versioncore.NewService(currentVersion(), releasesadapter.NewGitHubLatestReleaseSource(), executablePath)
 	parsers := []ports.LockfileParser{
 		audit.NewNPMParser(fs),
 		audit.NewPNPMParser(fs),
@@ -115,23 +120,24 @@ func NewBootstrap(ctx context.Context, args []string) (*Bootstrap, error) {
 	}
 
 	rt := &Runtime{
-		Root:     root,
-		TTY:      tty,
-		CI:       ci,
-		FS:       fs,
-		Cache:    cache,
-		UI:       ui,
-		Detector: detector,
-		Ignore:   ignore,
-		Rules:    loader,
-		Eval:     evaluator,
-		OSV:      osv,
-		Metadata: metadata,
-		PM:       pm,
-		Patches:  patches,
-		Parsers:  parsers,
-		Clock:    clock,
-		Config:   config,
+		Root:      root,
+		TTY:       tty,
+		CI:        ci,
+		FS:        fs,
+		Cache:     cache,
+		UI:        ui,
+		Detector:  detector,
+		Ignore:    ignore,
+		Rules:     loader,
+		Eval:      evaluator,
+		OSV:       osv,
+		Metadata:  metadata,
+		PM:        pm,
+		Patches:   patches,
+		Parsers:   parsers,
+		Clock:     clock,
+		Config:    config,
+		VersionSv: versionSvc,
 	}
 
 	rt.ScanSvc = audit.NewService(rt.Detector, rt.Ignore, rt.Rules, rt.Eval, rt.OSV, rt.Cache, rt.Clock, config.GetDuration("cache.ttl"), rt.Parsers)

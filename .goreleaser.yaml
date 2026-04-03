@@ -8,6 +8,8 @@ builds:
     binary: celador
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/GustavoGutierrez/celador/internal/app.buildVersion={{ .Version }}
     goos:
       - linux
       - darwin
@@ -24,6 +26,8 @@ builds:
     binary: celador
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/GustavoGutierrez/celador/internal/app.buildVersion={{ .Version }}
     goos:
       - windows
     goarch:

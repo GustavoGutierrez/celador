@@ -38,7 +38,7 @@ func TestInitScanFixInstallCommands(t *testing.T) {
 	if err := bootstrap.Execute(context.Background()); err != nil {
 		t.Fatalf("init execute: %v", err)
 	}
-	for _, args := range [][]string{{"scan"}, {"fix", "--diff"}} {
+	for _, args := range [][]string{{"scan"}, {"fix", "--diff"}, {"about"}, {"tui", "--no-interactive"}} {
 		bootstrap, err := app.NewBootstrap(context.Background(), args)
 		if err != nil {
 			t.Fatalf("bootstrap %v: %v", args, err)
@@ -51,7 +51,7 @@ func TestInitScanFixInstallCommands(t *testing.T) {
 		t.Fatalf("bootstrap install: %v", err)
 	}
 	bootstrap.OverrideOutput(buffer)
-	bootstrap.OverridePackageMetadata(helpers.StubMetadata{Assessment: shared.InstallAssessment{Package: "lodash", Risk: shared.SeverityLow}})
+	bootstrap.OverridePackageMetadata(&helpers.StubMetadata{Assessment: shared.InstallAssessment{Package: "lodash", Risk: shared.SeverityLow}})
 	bootstrap.OverridePackageManager(&helpers.StubPM{})
 	_ = bootstrap.Execute(context.Background())
 }

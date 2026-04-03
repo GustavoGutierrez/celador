@@ -14,6 +14,9 @@ Celador is a zero-trust supply chain security CLI for modern JavaScript, TypeScr
 - **`celador scan`:** Audits supported lockfiles with OSV-backed dependency findings, built-in framework rules, ignore handling, and persistent cache reuse.
 - **`celador fix`:** Plans and applies conservative manifest-level remediation to `package.json`.
 - **`celador install`:** Assesses install-time package risk before delegating to npm, pnpm, or Bun.
+- **`celador about`:** Shows developer information, GitHub profile, release status, and command guidance.
+- **`celador tui`:** Opens an interactive Bubble Tea dashboard when a TTY is available and falls back to a static overview otherwise.
+- **`celador --version`:** Prints the current version, checks for a newer release, and suggests the right Homebrew upgrade command when applicable.
 - **Plain-text, deterministic behavior:** Non-interactive flows are supported through `--no-interactive` and CI-aware prompting rules.
 
 ## 📚 Documentation
@@ -47,6 +50,9 @@ Download the Windows release asset from GitHub Releases:
 ## 🛠️ Quick Usage
 
 ```bash
+celador --version
+celador about
+celador tui
 celador init
 celador scan
 celador fix --diff
@@ -59,7 +65,7 @@ celador install express
 Celador is a Go CLI built with **hexagonal architecture (ports and adapters)**.
 
 - CLI routing is powered by `spf13/cobra`.
-- The default runtime surface is plain-text output.
+- The default runtime surface is plain-text output, with an explicit Bubble Tea overview available through `celador tui`.
 - Project standards and contributor guidance live in [`AGENTS.md`](AGENTS.md).
 - Architecture details live in [`docs/architecture.md`](docs/architecture.md).
 

@@ -1,8 +1,10 @@
 package app
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/GustavoGutierrez/celador/internal/core/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -20,11 +22,37 @@ func newRootCommand(rt *Runtime) *cobra.Command {
 		Short:         "Zero-trust dependency security for JS/TS workspaces",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			showVersion, err := cmd.Flags().GetBool("version")
+			if err != nil {
+				return err
+			}
+			if showVersion {
+				return runVersionCommand(cmd, rt)
+			}
+			return cmd.Help()
+		},
 	}
 
 	cmd.PersistentFlags().Bool("no-interactive", false, "Disable prompts and TTY flows")
-	cmd.AddCommand(newInitCommand(rt), newScanCommand(rt), newFixCommand(rt), newInstallCommand(rt))
+	cmd.Flags().Bool("version", false, "Print version information and update status")
+	cmd.AddCommand(newInitCommand(rt), newScanCommand(rt), newFixCommand(rt), newInstallCommand(rt), newAboutCommand(rt), newTUICommand(rt))
 	return cmd
+}
+
+func runVersionCommand(cmd *cobra.Command, rt *Runtime) error {
+	report := rt.VersionSv.Report(cmd.Context())
+	rt.UI.Printf("celador %s\n", report.Current)
+	if !report.UpdateAvailable {
+		return nil
+	}
+	rt.UI.Printf("Update available: %s\n", report.Latest)
+	if report.InstalledViaHomebrew {
+		rt.UI.Printf("Update with Homebrew: brew update && brew upgrade GustavoGutierrez/celador/celador\n")
+		return nil
+	}
+	rt.UI.Printf("If installed with Homebrew, run: brew update && brew upgrade GustavoGutierrez/celador/celador\n")
+	return nil
 }
 
 func newInitCommand(rt *Runtime) *cobra.Command {
@@ -167,4 +195,73 @@ func newInstallCommand(rt *Runtime) *cobra.Command {
 	}
 	cmd.Flags().Bool("yes", false, "Continue on risky findings without prompting")
 	return cmd
+}
+
+func newAboutCommand(rt *Runtime) *cobra.Command {
+	return &cobra.Command{
+		Use:   "about",
+		Short: "Show project, version, and developer information",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 0 {
+				return NewExitError(2, "about does not accept positional arguments")
+			}
+			return rt.UI.RenderOverview(cmd.Context(), buildOverview(cmd.Context(), rt), false)
+		},
+	}
+}
+
+func newTUICommand(rt *Runtime) *cobra.Command {
+	return &cobra.Command{
+		Use:   "tui",
+		Short: "Open the interactive Celador overview",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 0 {
+				return NewExitError(2, "tui does not accept positional arguments")
+			}
+			tty, ci, noInteractive, err := commandInteractivity(cmd, rt)
+			if err != nil {
+				return err
+			}
+			interactive := tty && !ci && !noInteractive
+			return rt.UI.RenderOverview(cmd.Context(), buildOverview(cmd.Context(), rt), interactive)
+		},
+	}
+}
+
+func buildOverview(ctx context.Context, rt *Runtime) shared.Overview {
+	overview := shared.Overview{
+		Title:         "Celador CLI",
+		Subtitle:      "Zero-trust dependency security for JavaScript, TypeScript, and Deno workspaces.",
+		Developer:     "Gustavo Gutierrez",
+		GitHubProfile: "https://github.com/GustavoGutierrez",
+		Commands: []shared.OverviewCommand{
+			{Name: "celador init", Summary: "Bootstrap workspace hardening and managed guidance.", Example: "celador init"},
+			{Name: "celador scan", Summary: "Audit supported lockfiles and framework rules.", Example: "celador scan"},
+			{Name: "celador fix", Summary: "Plan or apply conservative dependency remediation.", Example: "celador fix --diff"},
+			{Name: "celador install", Summary: "Assess package risk before installation.", Example: "celador install express"},
+			{Name: "celador --version", Summary: "Print the current version and update status.", Example: "celador --version"},
+			{Name: "celador tui", Summary: "Open this interactive command center.", Example: "celador tui", Interactive: true},
+		},
+		QuickStart: []string{
+			"Run `celador init` once per workspace to install configuration and guidance.",
+			"Use `celador scan` in CI to detect dependency and framework findings deterministically.",
+			"Review `celador fix --diff` before applying `celador fix --yes` in trusted environments.",
+		},
+		Documentation: []string{"README.md", "docs/commands.md", "docs/configuration.md", "docs/security-rules.md"},
+	}
+	if rt == nil || rt.VersionSv == nil {
+		overview.CurrentVersion = currentVersion()
+		return overview
+	}
+	report := rt.VersionSv.Report(ctx)
+	overview.CurrentVersion = report.Current
+	overview.LatestVersion = report.Latest
+	overview.UpdateAvailable = report.UpdateAvailable
+	overview.InstalledViaHomebrew = report.InstalledViaHomebrew
+	if report.UpdateAvailable && report.InstalledViaHomebrew {
+		overview.UpgradeCommand = "brew update && brew upgrade GustavoGutierrez/celador/celador"
+	} else if report.UpdateAvailable {
+		overview.UpgradeCommand = "brew update && brew upgrade GustavoGutierrez/celador/celador"
+	}
+	return overview
 }

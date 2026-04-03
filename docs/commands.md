@@ -9,6 +9,7 @@ celador
 Global flag:
 
 - `--no-interactive` — disables prompts and TTY flows
+- `--version` — prints the current CLI version and, when reachable, whether a newer release is available
 
 Available commands:
 
@@ -16,7 +17,53 @@ Available commands:
 - `scan`
 - `fix`
 - `install`
+- `about`
+- `tui`
 - `completion`
+
+Version behavior:
+
+- `celador --version` always prints the current CLI version
+- when GitHub release metadata is reachable, it also reports whether a newer release exists
+- when Celador appears to be installed from Homebrew, it recommends:
+
+  ```bash
+  brew update && brew upgrade GustavoGutierrez/celador/celador
+  ```
+
+- if the release lookup fails, the command still succeeds and prints the current version only
+
+## `celador about`
+
+Show project, release, and developer information in plain text.
+
+```bash
+celador about
+```
+
+Behavior:
+
+- shows the developer name and GitHub profile
+- shows the current installed version
+- shows the latest available release when GitHub release metadata is reachable
+- summarizes the primary commands and documentation entry points
+
+## `celador tui`
+
+Open the interactive Celador overview.
+
+```bash
+celador tui
+celador --no-interactive tui
+```
+
+Behavior:
+
+- uses Bubble Tea and Lip Gloss when an interactive TTY is available
+- shows the current version and latest available release when known
+- shows upgrade guidance for Homebrew users when an update is available
+- includes a concise command reference and documentation pointers
+- falls back to a plain-text overview in CI or when `--no-interactive` is used
 
 ## `celador init`
 
@@ -100,14 +147,20 @@ Behavior:
 - runs the same scan pipeline used by `celador scan`
 - builds manifest-level operations from fixable findings
 - updates `package.json` only
-- bumps existing dependencies when possible
+- bumps existing dependencies when possible, including `dependencies`, `devDependencies`, `optionalDependencies`, and `peerDependencies`
 - otherwise writes package overrides
+- explains why no safe plan was generated when findings cannot be remediated conservatively
+- separates at least these unplanned categories when present:
+  - findings without a known fixed version
+  - rule or code findings that require manual changes
+  - findings outside the current remediation scope
+- prints a readable operation list before the dry-run diff when a plan exists
 
 Current scope:
 
 - does not update lockfiles directly
 - does not run a package-manager install after writing `package.json`
-- returns a dry-run diff preview for the plan
+- returns a dry-run diff preview for the plan or explains why no manifest diff can be produced
 
 Exit behavior:
 
@@ -135,6 +188,8 @@ Behavior:
 
 - requires at least one package argument
 - assesses the first package argument before execution
+- resolves the package manager from the workspace lockfile when present, otherwise from practical workspace signals such as `package.json`, `packageManager`, `pnpm-workspace.yaml`, `bunfig.toml`, or Deno config files
+- defaults to npm for `package.json` workspaces when no stronger manager signal is present
 - fetches npm package metadata for npm-compatible managers
 - inspects the release tarball for simple install-time risk heuristics
 - delegates installation to the detected package manager after the assessment step

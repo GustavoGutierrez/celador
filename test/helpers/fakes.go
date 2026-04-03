@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -16,6 +17,9 @@ func (c StubClock) Now() time.Time { return c.Value }
 type StubUI struct {
 	ConfirmResult bool
 	ConfirmCalls  int
+	OverviewCalls int
+	LastOverview  shared.Overview
+	Interactive   bool
 	Output        strings.Builder
 }
 
@@ -35,8 +39,23 @@ func (ui *StubUI) RenderInstallAssessment(_ context.Context, assessment shared.I
 	ui.Output.WriteString(assessment.Package)
 	return nil
 }
+func (ui *StubUI) RenderOverview(_ context.Context, overview shared.Overview, interactive bool) error {
+	ui.OverviewCalls++
+	ui.LastOverview = overview
+	ui.Interactive = interactive
+	ui.Output.WriteString(overview.Developer)
+	ui.Output.WriteString("\n")
+	ui.Output.WriteString(overview.GitHubProfile)
+	ui.Output.WriteString("\n")
+	ui.Output.WriteString(overview.CurrentVersion)
+	if overview.LatestVersion != "" {
+		ui.Output.WriteString("\n")
+		ui.Output.WriteString(overview.LatestVersion)
+	}
+	return nil
+}
 func (ui *StubUI) Printf(format string, args ...any) {
-	_, _ = ui.Output.WriteString(strings.TrimSpace(format))
+	_, _ = ui.Output.WriteString(fmt.Sprintf(format, args...))
 }
 
 type StubRuleLoader struct {
@@ -65,16 +84,24 @@ func (s *StubOSV) Query(context.Context, []shared.Dependency) ([]shared.Finding,
 	return s.Findings, s.Err
 }
 
-type StubMetadata struct{ Assessment shared.InstallAssessment }
+type StubMetadata struct {
+	Assessment  shared.InstallAssessment
+	LastManager shared.PackageManager
+}
 
-func (s StubMetadata) InspectPackage(context.Context, shared.PackageManager, string) (shared.InstallAssessment, error) {
+func (s *StubMetadata) InspectPackage(_ context.Context, manager shared.PackageManager, _ string) (shared.InstallAssessment, error) {
+	s.LastManager = manager
 	return s.Assessment, nil
 }
 
-type StubPM struct{ Calls [][]string }
+type StubPM struct {
+	Calls      [][]string
+	Workspaces []shared.Workspace
+}
 
-func (pm *StubPM) Install(_ context.Context, _ shared.Workspace, args []string) error {
+func (pm *StubPM) Install(_ context.Context, workspace shared.Workspace, args []string) error {
 	pm.Calls = append(pm.Calls, args)
+	pm.Workspaces = append(pm.Workspaces, workspace)
 	return nil
 }
 

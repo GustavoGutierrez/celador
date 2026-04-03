@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/GustavoGutierrez/celador/internal/core/fix"
 	"github.com/GustavoGutierrez/celador/internal/core/install"
 	"github.com/GustavoGutierrez/celador/internal/core/shared"
+	versioncore "github.com/GustavoGutierrez/celador/internal/core/version"
 	"github.com/GustavoGutierrez/celador/internal/ports"
 	"github.com/GustavoGutierrez/celador/test/helpers"
 )
@@ -65,6 +67,55 @@ func TestFixCommandNoSafeRemediationReturnsExitCodeFour(t *testing.T) {
 	}
 }
 
+func TestVersionFlagPrintsCurrentVersionAndHomebrewUpgradeHint(t *testing.T) {
+	t.Parallel()
+
+	ui := &helpers.StubUI{}
+	rt := &Runtime{
+		UI:        ui,
+		VersionSv: versionServiceForTest("v1.2.3", "v1.3.0", "/opt/homebrew/Cellar/celador/1.2.3/bin/celador", nil),
+	}
+	cmd := newRootCommand(rt)
+	cmd.SetArgs([]string{"--version"})
+
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("version command should succeed: %v", err)
+	}
+	got := ui.Output.String()
+	for _, want := range []string{
+		"celador v1.2.3",
+		"Update available: v1.3.0",
+		"brew update && brew upgrade GustavoGutierrez/celador/celador",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in output, got %q", want, got)
+		}
+	}
+}
+
+func TestVersionFlagStillPrintsCurrentVersionWhenCheckFails(t *testing.T) {
+	t.Parallel()
+
+	ui := &helpers.StubUI{}
+	rt := &Runtime{
+		UI:        ui,
+		VersionSv: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", errors.New("boom")),
+	}
+	cmd := newRootCommand(rt)
+	cmd.SetArgs([]string{"--version"})
+
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("version command should ignore lookup failures: %v", err)
+	}
+	got := ui.Output.String()
+	if !strings.Contains(got, "celador v1.2.3") {
+		t.Fatalf("expected current version in output, got %q", got)
+	}
+	if strings.Contains(got, "Update available:") {
+		t.Fatalf("did not expect update banner when lookup fails, got %q", got)
+	}
+}
+
 func TestInstallCommandAllowsCleanPreflightInCI(t *testing.T) {
 	t.Parallel()
 	pm := &helpers.StubPM{}
@@ -76,7 +127,7 @@ func TestInstallCommandAllowsCleanPreflightInCI(t *testing.T) {
 		UI:   ui,
 		InstallSv: install.NewService(
 			helpers.StubDetector{Workspace: shared.Workspace{Root: "/tmp/project", PackageManager: shared.PackageManagerNPM}},
-			helpers.StubMetadata{Assessment: shared.InstallAssessment{Package: "left-pad", Risk: shared.SeverityLow, ShouldPrompt: false}},
+			&helpers.StubMetadata{Assessment: shared.InstallAssessment{Package: "left-pad", Risk: shared.SeverityLow, ShouldPrompt: false}},
 			pm,
 			ui,
 		),
@@ -92,6 +143,81 @@ func TestInstallCommandAllowsCleanPreflightInCI(t *testing.T) {
 	}
 	if ui.ConfirmCalls != 0 {
 		t.Fatalf("expected no prompt for clean preflight")
+	}
+}
+
+func TestAboutCommandPrintsDeveloperProfileAndVersion(t *testing.T) {
+	t.Parallel()
+
+	ui := &helpers.StubUI{}
+	rt := &Runtime{
+		UI:        ui,
+		VersionSv: versionServiceForTest("v1.2.3", "v1.3.0", "/usr/local/bin/celador", nil),
+	}
+	cmd := newRootCommand(rt)
+	cmd.SetArgs([]string{"about"})
+
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("about command should succeed: %v", err)
+	}
+	got := ui.Output.String()
+	for _, want := range []string{
+		"Gustavo Gutierrez",
+		"https://github.com/GustavoGutierrez",
+		"v1.2.3",
+		"v1.3.0",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in output, got %q", want, got)
+		}
+	}
+	if ui.OverviewCalls != 1 {
+		t.Fatalf("expected overview rendering once, got %d", ui.OverviewCalls)
+	}
+	if ui.Interactive {
+		t.Fatalf("about command should use plain-text mode")
+	}
+}
+
+func TestTUICommandUsesInteractiveModeWhenTTYAvailable(t *testing.T) {
+	t.Parallel()
+
+	ui := &helpers.StubUI{}
+	rt := &Runtime{
+		TTY:       true,
+		CI:        false,
+		UI:        ui,
+		VersionSv: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil),
+	}
+	cmd := newRootCommand(rt)
+	cmd.SetArgs([]string{"tui"})
+
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("tui command should succeed: %v", err)
+	}
+	if !ui.Interactive {
+		t.Fatalf("expected tui command to request interactive mode")
+	}
+}
+
+func TestTUICommandFallsBackToStaticModeInCI(t *testing.T) {
+	t.Parallel()
+
+	ui := &helpers.StubUI{}
+	rt := &Runtime{
+		TTY:       false,
+		CI:        true,
+		UI:        ui,
+		VersionSv: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil),
+	}
+	cmd := newRootCommand(rt)
+	cmd.SetArgs([]string{"tui"})
+
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("tui command should succeed in CI: %v", err)
+	}
+	if ui.Interactive {
+		t.Fatalf("expected tui command to fall back to static mode in CI")
 	}
 }
 
@@ -145,4 +271,17 @@ func assertExitCode(t *testing.T, err error, want int) {
 	if exitErr.ExitCode() != want {
 		t.Fatalf("expected exit code %d, got %d", want, exitErr.ExitCode())
 	}
+}
+
+func versionServiceForTest(current string, latest string, executablePath string, err error) *versioncore.Service {
+	return versioncore.NewService(current, stubReleaseSource{latest: latest, err: err}, executablePath)
+}
+
+type stubReleaseSource struct {
+	latest string
+	err    error
+}
+
+func (s stubReleaseSource) Latest(context.Context) (string, error) {
+	return s.latest, s.err
 }

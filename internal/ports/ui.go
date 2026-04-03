@@ -11,5 +11,6 @@ type PromptUI interface {
 	RenderScan(ctx context.Context, result shared.ScanResult) error
 	RenderFixPlan(ctx context.Context, plan shared.FixPlan) error
 	RenderInstallAssessment(ctx context.Context, assessment shared.InstallAssessment) error
+	RenderOverview(ctx context.Context, overview shared.Overview, interactive bool) error
 	Printf(format string, args ...any)
 }

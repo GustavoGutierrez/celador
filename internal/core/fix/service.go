@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	fsadapter "github.com/GustavoGutierrez/celador/internal/adapters/fs"
 	"github.com/GustavoGutierrez/celador/internal/core/audit"
@@ -33,19 +34,38 @@ func (s *Service) Plan(ctx context.Context, root string, tty bool, ci bool) (sha
 		return shared.FixPlan{}, err
 	}
 	ops := []shared.FixOperation{}
+	reasons := newReasonAccumulator()
 	for _, finding := range result.Findings {
-		if !finding.Fixable || finding.PackageName == "" || finding.FixVersion == "" {
+		if reason, ok := classifyUnplannedFinding(finding); ok {
+			reasons.Add(reason, formatFindingExample(finding))
 			continue
 		}
-		current := manifestDeps[finding.PackageName]
+		current, found := manifestDeps[finding.PackageName]
 		strategy := "override"
-		if current != "" {
+		section := ""
+		currentVersion := ""
+		if found {
 			strategy = "bump"
+			section = current.Section
+			currentVersion = current.Version
 		}
-		ops = append(ops, shared.FixOperation{File: result.Workspace.ManifestPath, PackageName: finding.PackageName, CurrentVersion: current, ProposedVersion: finding.FixVersion, Strategy: strategy, BlastRadius: []string{finding.PackageName}, RequiresInstall: true})
+		ops = append(ops, shared.FixOperation{
+			File:            result.Workspace.ManifestPath,
+			ManifestSection: section,
+			PackageName:     finding.PackageName,
+			CurrentVersion:  currentVersion,
+			ProposedVersion: finding.FixVersion,
+			Strategy:        strategy,
+			BlastRadius:     []string{finding.PackageName},
+			RequiresInstall: true,
+		})
 	}
 	unique := dedupeOperations(ops)
-	plan := shared.FixPlan{Operations: unique, Summary: fmt.Sprintf("Planned %d conservative remediation operations", len(unique))}
+	plan := shared.FixPlan{
+		Operations: unique,
+		Summary:    fmt.Sprintf("Planned %d conservative remediation operations", len(unique)),
+		Reasons:    reasons.List(),
+	}
 	plan.DryRunDiff = fsadapter.RenderPlanDiff(unique)
 	return plan, nil
 }
@@ -55,18 +75,102 @@ func (s *Service) Apply(ctx context.Context, root string, tty bool, ci bool, pla
 	return s.patches.Apply(ctx, ws, plan)
 }
 
-func (s *Service) readManifestDependencies(ctx context.Context, manifestPath string) (map[string]string, error) {
+type manifestDependency struct {
+	Section string
+	Version string
+}
+
+func (s *Service) readManifestDependencies(ctx context.Context, manifestPath string) (map[string]manifestDependency, error) {
 	body, err := s.fs.ReadFile(ctx, manifestPath)
 	if err != nil {
 		return nil, err
 	}
 	var pkg struct {
-		Dependencies map[string]string `json:"dependencies"`
+		Dependencies         map[string]string `json:"dependencies"`
+		DevDependencies      map[string]string `json:"devDependencies"`
+		OptionalDependencies map[string]string `json:"optionalDependencies"`
+		PeerDependencies     map[string]string `json:"peerDependencies"`
 	}
 	if err := json.Unmarshal(body, &pkg); err != nil {
 		return nil, err
 	}
-	return pkg.Dependencies, nil
+	deps := map[string]manifestDependency{}
+	mergeManifestDeps(deps, "dependencies", pkg.Dependencies)
+	mergeManifestDeps(deps, "devDependencies", pkg.DevDependencies)
+	mergeManifestDeps(deps, "optionalDependencies", pkg.OptionalDependencies)
+	mergeManifestDeps(deps, "peerDependencies", pkg.PeerDependencies)
+	return deps, nil
+}
+
+func mergeManifestDeps(target map[string]manifestDependency, section string, deps map[string]string) {
+	for name, version := range deps {
+		if _, exists := target[name]; exists {
+			continue
+		}
+		target[name] = manifestDependency{Section: section, Version: version}
+	}
+}
+
+func classifyUnplannedFinding(finding shared.Finding) (shared.FixPlanReasonCategory, bool) {
+	if finding.Source != shared.FindingSourceOSV {
+		return shared.FixPlanReasonManualChange, true
+	}
+	if strings.TrimSpace(finding.FixVersion) == "" || !finding.Fixable {
+		return shared.FixPlanReasonNoFixedVersion, true
+	}
+	if strings.TrimSpace(finding.PackageName) == "" {
+		return shared.FixPlanReasonOutsideScope, true
+	}
+	return "", false
+}
+
+func formatFindingExample(finding shared.Finding) string {
+	parts := []string{strings.TrimSpace(finding.ID)}
+	if pkg := strings.TrimSpace(finding.PackageName); pkg != "" {
+		parts = append(parts, fmt.Sprintf("package %s", pkg))
+	} else if target := strings.TrimSpace(finding.Target); target != "" {
+		parts = append(parts, fmt.Sprintf("target %s", target))
+	}
+	return strings.Join(parts, " — ")
+}
+
+type reasonAccumulator map[shared.FixPlanReasonCategory]*shared.FixPlanReason
+
+func newReasonAccumulator() reasonAccumulator {
+	return reasonAccumulator{
+		shared.FixPlanReasonNoFixedVersion: {Category: shared.FixPlanReasonNoFixedVersion},
+		shared.FixPlanReasonManualChange:   {Category: shared.FixPlanReasonManualChange},
+		shared.FixPlanReasonOutsideScope:   {Category: shared.FixPlanReasonOutsideScope},
+	}
+}
+
+func (a reasonAccumulator) Add(category shared.FixPlanReasonCategory, example string) {
+	item, ok := a[category]
+	if !ok {
+		return
+	}
+	item.Count++
+	if example == "" || len(item.Examples) >= 3 {
+		return
+	}
+	item.Examples = append(item.Examples, example)
+}
+
+func (a reasonAccumulator) List() []shared.FixPlanReason {
+	ordered := []shared.FixPlanReasonCategory{
+		shared.FixPlanReasonNoFixedVersion,
+		shared.FixPlanReasonManualChange,
+		shared.FixPlanReasonOutsideScope,
+	}
+	result := make([]shared.FixPlanReason, 0, len(ordered))
+	for _, category := range ordered {
+		item := a[category]
+		if item == nil || item.Count == 0 {
+			continue
+		}
+		result = append(result, *item)
+	}
+	return result
 }
 
 func dedupeOperations(ops []shared.FixOperation) []shared.FixOperation {
