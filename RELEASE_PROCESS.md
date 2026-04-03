@@ -77,10 +77,13 @@ git show origin/homebrew-tap:Formula/celador.rb
 Optionally test installation with Homebrew:
 
 ```bash
-brew tap GustavoGutierrez/celador https://github.com/GustavoGutierrez/celador homebrew-tap
-brew reinstall celador
+brew install https://raw.githubusercontent.com/GustavoGutierrez/celador/homebrew-tap/Formula/celador.rb
+brew upgrade celador
 celador --help
 ```
+
+This repository uses a same-repo `homebrew-tap` branch, and Homebrew does not support tapping a
+non-default branch directly with `brew tap`, so the raw formula URL is the supported install path.
 
 ## Troubleshooting
 

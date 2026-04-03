@@ -14,20 +14,19 @@ replaces the formula placeholders with the current release version and checksums
 The GitHub release workflow also publishes a Windows amd64 archive, but Homebrew does not
 use it.
 
-## Install from the tap branch
-
-Because this repository is named `celador` instead of `homebrew-celador`, users must pass
-the repository URL and branch explicitly:
-
-```bash
-brew tap GustavoGutierrez/celador https://github.com/GustavoGutierrez/celador homebrew-tap
-brew install celador
-```
-
 ## Install directly from the formula URL
+
+Homebrew cannot tap a non-default branch directly. Because this formula is published to the
+`homebrew-tap` branch of the same repository, the supported install path is the raw formula URL:
 
 ```bash
 brew install https://raw.githubusercontent.com/GustavoGutierrez/celador/homebrew-tap/Formula/celador.rb
+```
+
+After installation, standard upgrades can use:
+
+```bash
+brew upgrade celador
 ```
 
 ## Update
