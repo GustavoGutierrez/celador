@@ -76,7 +76,7 @@ Output behavior:
 
 - prints a scan fingerprint
 - prints the finding count and ignored finding count
-- prints one line per finding
+- prints one line per finding with the finding ID, package or target context, summary text, and fix version when available
 - prints `Result source: cache` when OSV data came from cache
 - prints `Mode: offline fallback` when a stale cached result is used because OSV could not be reached
 

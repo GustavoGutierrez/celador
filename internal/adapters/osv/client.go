@@ -16,10 +16,11 @@ import (
 type Client struct {
 	httpClient *http.Client
 	ttl        time.Duration
+	endpoint   string
 }
 
 func NewClient(ttl time.Duration) *Client {
-	return &Client{httpClient: &http.Client{Timeout: 20 * time.Second}, ttl: ttl}
+	return &Client{httpClient: &http.Client{Timeout: 20 * time.Second}, ttl: ttl, endpoint: "https://api.osv.dev/v1/querybatch"}
 }
 
 func (c *Client) Query(ctx context.Context, deps []shared.Dependency) ([]shared.Finding, error) {
@@ -34,7 +35,7 @@ func (c *Client) Query(ctx context.Context, deps []shared.Dependency) ([]shared.
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.osv.dev/v1/querybatch", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +53,7 @@ func (c *Client) Query(ctx context.Context, deps []shared.Dependency) ([]shared.
 			Vulns []struct {
 				ID       string   `json:"id"`
 				Summary  string   `json:"summary"`
+				Details  string   `json:"details"`
 				Aliases  []string `json:"aliases"`
 				Affected []struct {
 					Ranges []struct {
@@ -83,7 +85,7 @@ func (c *Client) Query(ctx context.Context, deps []shared.Dependency) ([]shared.
 				Severity:    shared.SeverityHigh,
 				Target:      deps[i].Name,
 				PackageName: deps[i].Name,
-				Summary:     vuln.Summary,
+				Summary:     summarizeVulnerability(vuln.Summary, vuln.Details, deps[i].Name),
 				FixVersion:  fixVersion,
 				Fixable:     fixVersion != "",
 			}
@@ -97,4 +99,27 @@ func (c *Client) Query(ctx context.Context, deps []shared.Dependency) ([]shared.
 		return findings[i].ID < findings[j].ID
 	})
 	return findings, nil
+}
+
+func summarizeVulnerability(summary string, details string, packageName string) string {
+	summary = strings.TrimSpace(summary)
+	if summary != "" {
+		return summary
+	}
+
+	details = compactWhitespace(details)
+	if details != "" {
+		return details
+	}
+
+	packageName = strings.TrimSpace(packageName)
+	if packageName != "" {
+		return fmt.Sprintf("Vulnerability detected in %s", packageName)
+	}
+
+	return "Vulnerability detected"
+}
+
+func compactWhitespace(value string) string {
+	return strings.Join(strings.Fields(value), " ")
 }

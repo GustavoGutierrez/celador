@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/GustavoGutierrez/celador/internal/core/shared"
@@ -47,7 +48,7 @@ func (ui *TerminalUI) RenderScan(_ context.Context, result shared.ScanResult) er
 		return err
 	}
 	for _, finding := range result.Findings {
-		if _, err := fmt.Fprintf(ui.out, "- [%s] %s: %s\n", finding.Severity, finding.ID, finding.Summary); err != nil {
+		if _, err := fmt.Fprintf(ui.out, "- [%s] %s\n", finding.Severity, formatFindingLine(finding)); err != nil {
 			return err
 		}
 	}
@@ -58,6 +59,85 @@ func (ui *TerminalUI) RenderScan(_ context.Context, result shared.ScanResult) er
 		_, err = fmt.Fprintln(ui.out, "Mode: offline fallback")
 	}
 	return err
+}
+
+func formatFindingLine(finding shared.Finding) string {
+	parts := []string{finding.ID}
+
+	context := formatFindingContext(finding)
+	if context != "" {
+		parts = append(parts, context)
+	}
+
+	summary := strings.TrimSpace(finding.Summary)
+	if summary == "" {
+		summary = fallbackFindingSummary(finding)
+	}
+	if summary != "" {
+		parts = append(parts, summary)
+	}
+
+	if finding.Fixable && finding.FixVersion != "" {
+		parts = append(parts, fmt.Sprintf("fixed in %s", finding.FixVersion))
+	}
+
+	return strings.Join(parts, ": ")
+}
+
+func formatFindingContext(finding shared.Finding) string {
+	switch finding.Source {
+	case shared.FindingSourceOSV:
+		if finding.PackageName != "" {
+			return fmt.Sprintf("package %s", finding.PackageName)
+		}
+		if finding.Target != "" {
+			return fmt.Sprintf("target %s", finding.Target)
+		}
+	default:
+		if len(finding.Locations) > 0 {
+			location := finding.Locations[0]
+			if location.Path != "" {
+				if location.Line > 0 {
+					return fmt.Sprintf("target %s:%d", location.Path, location.Line)
+				}
+				return fmt.Sprintf("target %s", location.Path)
+			}
+		}
+		if finding.Target != "" {
+			return fmt.Sprintf("target %s", finding.Target)
+		}
+	}
+
+	return ""
+}
+
+func fallbackFindingSummary(finding shared.Finding) string {
+	if finding.Source == shared.FindingSourceOSV {
+		pkg := firstNonEmpty(finding.PackageName, finding.Target)
+		if pkg != "" {
+			return fmt.Sprintf("Vulnerability detected in %s", pkg)
+		}
+		return "Vulnerability detected"
+	}
+
+	if len(finding.Locations) > 0 && finding.Locations[0].Path != "" {
+		return fmt.Sprintf("Review %s", filepath.Base(finding.Locations[0].Path))
+	}
+	if finding.Target != "" {
+		return fmt.Sprintf("Review %s", filepath.Base(finding.Target))
+	}
+
+	return "Review this finding"
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (ui *TerminalUI) RenderFixPlan(_ context.Context, plan shared.FixPlan) error {
