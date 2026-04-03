@@ -111,6 +111,17 @@ func (d StubDetector) Detect(context.Context, string, bool, bool) (shared.Worksp
 	return d.Workspace, nil
 }
 
+type StubNodeVersionDetector struct {
+	Version string
+	OK      bool
+	Calls   int
+}
+
+func (d *StubNodeVersionDetector) Detect(context.Context, string) (string, bool) {
+	d.Calls++
+	return d.Version, d.OK
+}
+
 type StubIgnore struct{ Rules []shared.IgnoreRule }
 
 func (s StubIgnore) Load(context.Context, string) ([]shared.IgnoreRule, error) { return s.Rules, nil }
@@ -175,3 +186,4 @@ func (p *StubPatchWriter) Apply(_ context.Context, _ shared.Workspace, plan shar
 }
 
 var _ ports.PromptUI = (*StubUI)(nil)
+var _ ports.NodeVersionDetector = (*StubNodeVersionDetector)(nil)

@@ -88,13 +88,17 @@ Behavior:
 - applies package-manager hardening config
 - creates or updates managed guidance in `AGENTS.md`
 - updates managed guidance in `CLAUDE.md` only when that file already exists
-- validates strict `package.json` `engines`
+- requires a strict `package.json` `engines.node` entry for `package.json` workspaces
+- can add a missing `engines.node` automatically from the current local Node.js version
 
 Important constraints:
 
 - does not accept positional arguments
 - fails if no supported workspace lockfile is found
-- fails if `package.json` has no `engines` field or if an engine version uses `^`, `~`, `>`, or `<`
+- for `package.json` workspaces, fails when `engines.node` is missing and Celador cannot detect a local Node.js version to add automatically
+- prompts before adding a missing `engines.node` in interactive mode when local Node.js detection succeeds
+- auto-adds a missing `engines.node` in CI or `--no-interactive` mode when local Node.js detection succeeds
+- fails if `package.json` `engines.node` is not a strict exact version such as `20.11.1`
 
 ## `celador scan`
 

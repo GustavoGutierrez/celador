@@ -16,6 +16,7 @@ import (
 	pmadapter "github.com/GustavoGutierrez/celador/internal/adapters/pm"
 	releasesadapter "github.com/GustavoGutierrez/celador/internal/adapters/releases"
 	rulesadapter "github.com/GustavoGutierrez/celador/internal/adapters/rules"
+	systemadapter "github.com/GustavoGutierrez/celador/internal/adapters/system"
 	tuiadapter "github.com/GustavoGutierrez/celador/internal/adapters/tui"
 	"github.com/GustavoGutierrez/celador/internal/core/audit"
 	"github.com/GustavoGutierrez/celador/internal/core/fix"
@@ -59,6 +60,7 @@ type Runtime struct {
 	OSV       ports.VulnerabilitySource
 	Metadata  ports.PackageMetadataSource
 	PM        ports.PackageManager
+	Node      ports.NodeVersionDetector
 	Patches   ports.PatchWriter
 	Parsers   []ports.LockfileParser
 	Clock     ports.Clock
@@ -109,6 +111,7 @@ func NewBootstrap(ctx context.Context, args []string) (*Bootstrap, error) {
 	osv := osvadapter.NewClient(config.GetDuration("cache.ttl"))
 	metadata := osvadapter.NewRegistryInspector()
 	pm := pmadapter.NewExecutor(os.Stdout, os.Stderr)
+	node := systemadapter.NewNodeVersionDetector()
 	patches := fsadapter.NewPatchWriter(fs)
 	executablePath, _ := os.Executable()
 	versionSvc := versioncore.NewService(currentVersion(), releasesadapter.NewGitHubLatestReleaseSource(), executablePath)
@@ -133,6 +136,7 @@ func NewBootstrap(ctx context.Context, args []string) (*Bootstrap, error) {
 		OSV:       osv,
 		Metadata:  metadata,
 		PM:        pm,
+		Node:      node,
 		Patches:   patches,
 		Parsers:   parsers,
 		Clock:     clock,
@@ -141,7 +145,7 @@ func NewBootstrap(ctx context.Context, args []string) (*Bootstrap, error) {
 	}
 
 	rt.ScanSvc = audit.NewService(rt.Detector, rt.Ignore, rt.Rules, rt.Eval, rt.OSV, rt.Cache, rt.Clock, config.GetDuration("cache.ttl"), rt.Parsers)
-	rt.InitSvc = workspace.NewService(fs, detector, ignore, ui)
+	rt.InitSvc = workspace.NewService(fs, detector, ignore, ui, node)
 	rt.FixSvc = fix.NewService(rt.ScanSvc, rt.Patches, fs, ui)
 	rt.InstallSv = install.NewService(detector, metadata, pm, ui)
 	rt.RootCmd = newRootCommand(rt)

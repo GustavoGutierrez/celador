@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -25,10 +26,13 @@ type Service struct {
 	detector ports.WorkspaceDetector
 	ignore   ports.IgnoreStore
 	ui       ports.PromptUI
+	node     ports.NodeVersionDetector
 }
 
-func NewService(fs ports.FileSystem, detector ports.WorkspaceDetector, ignore ports.IgnoreStore, ui ports.PromptUI) *Service {
-	return &Service{fs: fs, detector: detector, ignore: ignore, ui: ui}
+var strictNodeVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
+
+func NewService(fs ports.FileSystem, detector ports.WorkspaceDetector, ignore ports.IgnoreStore, ui ports.PromptUI, node ports.NodeVersionDetector) *Service {
+	return &Service{fs: fs, detector: detector, ignore: ignore, ui: ui, node: node}
 }
 
 func (s *Service) Run(ctx context.Context, root string, tty bool, ci bool, installHook bool) (Result, error) {
@@ -181,21 +185,80 @@ func (s *Service) validateEngines(ctx context.Context, ws shared.Workspace) erro
 	if err != nil {
 		return err
 	}
-	var pkg struct {
-		Engines map[string]string `json:"engines"`
-	}
+	pkg := map[string]any{}
 	if err := json.Unmarshal(body, &pkg); err != nil {
 		return fmt.Errorf("parse package.json: %w", err)
 	}
-	if len(pkg.Engines) == 0 {
-		return fmt.Errorf("package.json must define engines for deterministic installs")
+	enginesValue, hasEngines := pkg["engines"]
+	if !hasEngines || enginesValue == nil {
+		return s.ensureMissingNodeEngine(ctx, ws, pkg)
 	}
-	for _, v := range pkg.Engines {
-		if strings.ContainsAny(v, "^~><") {
-			return fmt.Errorf("package.json engines must be strict: %q", v)
-		}
+	engines, ok := enginesValue.(map[string]any)
+	if !ok {
+		return fmt.Errorf("package.json engines must be an object with a strict engines.node entry such as \"20.11.1\"")
+	}
+	nodeValue, hasNode := engines["node"]
+	if !hasNode || strings.TrimSpace(fmt.Sprint(nodeValue)) == "" {
+		return s.ensureMissingNodeEngine(ctx, ws, pkg)
+	}
+	nodeVersion, ok := nodeValue.(string)
+	if !ok || !isStrictNodeVersion(nodeVersion) {
+		return fmt.Errorf("package.json engines.node must be a strict exact version such as \"20.11.1\", got %q", nodeValue)
 	}
 	return nil
+}
+
+func (s *Service) ensureMissingNodeEngine(ctx context.Context, ws shared.Workspace, pkg map[string]any) error {
+	detected, ok := s.detectNodeVersion(ctx, ws.Root)
+	if ws.CI || !ws.TTY {
+		if !ok {
+			return fmt.Errorf("package.json must define engines.node as a strict exact version such as \"20.11.1\"; unable to detect the current Node.js version automatically")
+		}
+		return s.writeNodeEngine(ctx, ws.ManifestPath, pkg, detected)
+	}
+	if !ok {
+		return fmt.Errorf("package.json must define engines.node as a strict exact version such as \"20.11.1\"; Celador could not detect the current Node.js version automatically")
+	}
+	confirmed, err := s.ui.Confirm(ctx, fmt.Sprintf("package.json is missing engines.node. Add %s automatically using the current Node.js version?", detected))
+	if err != nil {
+		return fmt.Errorf("prompt to add package.json engines.node: %w", err)
+	}
+	if !confirmed {
+		return fmt.Errorf("package.json must define engines.node as a strict exact version such as %q", detected)
+	}
+	return s.writeNodeEngine(ctx, ws.ManifestPath, pkg, detected)
+}
+
+func (s *Service) detectNodeVersion(ctx context.Context, root string) (string, bool) {
+	if s.node == nil {
+		return "", false
+	}
+	version, ok := s.node.Detect(ctx, root)
+	if !ok || !isStrictNodeVersion(version) {
+		return "", false
+	}
+	return version, true
+}
+
+func (s *Service) writeNodeEngine(ctx context.Context, path string, pkg map[string]any, version string) error {
+	engines, ok := pkg["engines"].(map[string]any)
+	if !ok || engines == nil {
+		engines = map[string]any{}
+	}
+	engines["node"] = version
+	pkg["engines"] = engines
+	formatted, err := json.MarshalIndent(pkg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal package.json: %w", err)
+	}
+	if err := s.fs.WriteFile(ctx, path, append(formatted, '\n')); err != nil {
+		return fmt.Errorf("write package.json: %w", err)
+	}
+	return nil
+}
+
+func isStrictNodeVersion(value string) bool {
+	return strictNodeVersionPattern.MatchString(strings.TrimSpace(value))
 }
 
 func (s *Service) installHook(ctx context.Context, ws shared.Workspace) error {

@@ -32,6 +32,7 @@ func TestRunPreservesUnrelatedWorkspaceContent(t *testing.T) {
 		helpers.StubDetector{Workspace: shared.Workspace{Root: root, PackageManager: shared.PackageManagerNPM, Lockfiles: []string{lockfile}, ManifestPath: manifest, ConfigPath: configPath}},
 		fsadapter.NewIgnoreStore(fs),
 		&helpers.StubUI{},
+		&helpers.StubNodeVersionDetector{},
 	)
 
 	if _, err := service.Run(ctx, root, false, true, false); err != nil {
@@ -83,6 +84,7 @@ func TestRunCreatesAgentsWithoutCreatingClaudeOrLLM(t *testing.T) {
 		helpers.StubDetector{Workspace: shared.Workspace{Root: root, PackageManager: shared.PackageManagerNPM, Lockfiles: []string{lockfile}, ManifestPath: manifest, ConfigPath: configPath}},
 		fsadapter.NewIgnoreStore(fs),
 		&helpers.StubUI{},
+		&helpers.StubNodeVersionDetector{},
 	)
 
 	if _, err := service.Run(ctx, root, false, true, false); err != nil {
@@ -215,6 +217,136 @@ func TestDetectRemainsUnknownForUnsupportedExplicitManagerWithoutOtherSignals(t 
 	}
 	if ws.PackageManager != shared.PackageManagerUnknown {
 		t.Fatalf("expected unknown package manager, got %s", ws.PackageManager)
+	}
+}
+
+func TestRunAddsMissingNodeEngineInteractivelyWhenAccepted(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fs := fsadapter.NewOSFileSystem(root)
+	ctx := context.Background()
+	manifest := filepath.Join(root, "package.json")
+	lockfile := filepath.Join(root, "package-lock.json")
+	configPath := filepath.Join(root, ".celador.yaml")
+	ui := &helpers.StubUI{ConfirmResult: true}
+	node := &helpers.StubNodeVersionDetector{Version: "20.11.1", OK: true}
+
+	mustWriteWorkspaceFile(t, fs, manifest, `{"name":"demo"}`)
+	mustWriteWorkspaceFile(t, fs, lockfile, `{"packages":{}}`)
+
+	service := NewService(
+		fs,
+		helpers.StubDetector{Workspace: shared.Workspace{Root: root, PackageManager: shared.PackageManagerNPM, Lockfiles: []string{lockfile}, ManifestPath: manifest, ConfigPath: configPath, TTY: true, CI: false}},
+		fsadapter.NewIgnoreStore(fs),
+		ui,
+		node,
+	)
+
+	if _, err := service.Run(ctx, root, true, false, false); err != nil {
+		t.Fatalf("run init: %v", err)
+	}
+
+	assertContains(t, fs, manifest, `"engines": {`)
+	assertContains(t, fs, manifest, `"node": "20.11.1"`)
+	if ui.ConfirmCalls != 1 {
+		t.Fatalf("expected one confirmation prompt, got %d", ui.ConfirmCalls)
+	}
+	if node.Calls != 1 {
+		t.Fatalf("expected one node version detection, got %d", node.Calls)
+	}
+}
+
+func TestRunAddsMissingNodeEngineNonInteractivelyWhenDetected(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fs := fsadapter.NewOSFileSystem(root)
+	ctx := context.Background()
+	manifest := filepath.Join(root, "package.json")
+	lockfile := filepath.Join(root, "package-lock.json")
+	configPath := filepath.Join(root, ".celador.yaml")
+	ui := &helpers.StubUI{}
+	node := &helpers.StubNodeVersionDetector{Version: "22.3.0", OK: true}
+
+	mustWriteWorkspaceFile(t, fs, manifest, `{"name":"demo"}`)
+	mustWriteWorkspaceFile(t, fs, lockfile, `{"packages":{}}`)
+
+	service := NewService(
+		fs,
+		helpers.StubDetector{Workspace: shared.Workspace{Root: root, PackageManager: shared.PackageManagerNPM, Lockfiles: []string{lockfile}, ManifestPath: manifest, ConfigPath: configPath, TTY: false, CI: true}},
+		fsadapter.NewIgnoreStore(fs),
+		ui,
+		node,
+	)
+
+	if _, err := service.Run(ctx, root, false, true, false); err != nil {
+		t.Fatalf("run init: %v", err)
+	}
+
+	assertContains(t, fs, manifest, `"node": "22.3.0"`)
+	if ui.ConfirmCalls != 0 {
+		t.Fatalf("expected no confirmation prompt in non-interactive mode")
+	}
+}
+
+func TestRunFailsClearlyWhenMissingNodeEngineCannotBeDetectedNonInteractively(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fs := fsadapter.NewOSFileSystem(root)
+	ctx := context.Background()
+	manifest := filepath.Join(root, "package.json")
+	lockfile := filepath.Join(root, "package-lock.json")
+	configPath := filepath.Join(root, ".celador.yaml")
+
+	mustWriteWorkspaceFile(t, fs, manifest, `{"name":"demo"}`)
+	mustWriteWorkspaceFile(t, fs, lockfile, `{"packages":{}}`)
+
+	service := NewService(
+		fs,
+		helpers.StubDetector{Workspace: shared.Workspace{Root: root, PackageManager: shared.PackageManagerNPM, Lockfiles: []string{lockfile}, ManifestPath: manifest, ConfigPath: configPath, TTY: false, CI: true}},
+		fsadapter.NewIgnoreStore(fs),
+		&helpers.StubUI{},
+		&helpers.StubNodeVersionDetector{},
+	)
+
+	_, err := service.Run(ctx, root, false, true, false)
+	if err == nil {
+		t.Fatal("expected init to fail when node version detection is unavailable")
+	}
+	if !strings.Contains(err.Error(), "must define engines.node") || !strings.Contains(err.Error(), "unable to detect the current Node.js version automatically") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunFailsWhenNodeEngineIsNotStrict(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fs := fsadapter.NewOSFileSystem(root)
+	ctx := context.Background()
+	manifest := filepath.Join(root, "package.json")
+	lockfile := filepath.Join(root, "package-lock.json")
+	configPath := filepath.Join(root, ".celador.yaml")
+
+	mustWriteWorkspaceFile(t, fs, manifest, `{"engines":{"node":"^20.0.0"}}`)
+	mustWriteWorkspaceFile(t, fs, lockfile, `{"packages":{}}`)
+
+	service := NewService(
+		fs,
+		helpers.StubDetector{Workspace: shared.Workspace{Root: root, PackageManager: shared.PackageManagerNPM, Lockfiles: []string{lockfile}, ManifestPath: manifest, ConfigPath: configPath, TTY: false, CI: true}},
+		fsadapter.NewIgnoreStore(fs),
+		&helpers.StubUI{},
+		&helpers.StubNodeVersionDetector{Version: "20.11.1", OK: true},
+	)
+
+	_, err := service.Run(ctx, root, false, true, false)
+	if err == nil {
+		t.Fatal("expected init to fail for non-strict node engines")
+	}
+	if !strings.Contains(err.Error(), "engines.node must be a strict exact version") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
