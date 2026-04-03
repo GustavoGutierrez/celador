@@ -1,22 +1,20 @@
-## Celador CLI v1 Technical Summary
+## Celador CLI Technical Summary
 
 ### Overview
 
-Celador CLI v1 is implemented as a Go command-line application focused on dependency and supply-chain security for JavaScript and Deno ecosystems. The implementation follows a hexagonal architecture and provides a buildable, testable baseline for workspace hardening, dependency scanning, remediation planning, and guarded install flows.
+Celador is a Go command-line application focused on dependency and supply-chain security for JavaScript, TypeScript, and Deno workspaces. The implementation follows a hexagonal architecture and provides a buildable, testable baseline for workspace hardening, dependency scanning, remediation planning, and guarded install flows.
 
 ### Architecture
 
 The repository is organized around a standard Go project layout:
 
 - `cmd/celador` contains the binary entrypoint.
-- `internal/app` wires the runtime, dependency graph, and Cobra/Viper commands.
+- `internal/app` wires the runtime, dependency graph, and Cobra commands.
 - `internal/core` contains domain models and use cases for workspace management, auditing, remediation, and install preflight checks.
 - `internal/ports` defines the interfaces used by the core layer.
 - `internal/adapters` implements filesystem, cache, OSV, package-manager, rules, and terminal adapters.
-- `configs` contains built-in templates and rule packs.
+- `configs` contains built-in rule packs and managed template content.
 - `test` contains fixtures, helpers, and end-to-end coverage.
-
-This keeps business logic isolated from external integrations such as OSV.dev, local filesystems, and package-manager execution.
 
 ### Delivered Commands
 
@@ -26,12 +24,12 @@ This keeps business logic isolated from external integrations such as OSV.dev, l
 - Applies hardening defaults for supported package-manager configuration files.
 - Manages project AI guidance files through preserved managed blocks.
 - Generates or updates `AGENTS.md`, `CLAUDE.md`, and `llm.txt` without clobbering unrelated user content.
-- Honors non-interactive execution through root runtime settings.
+- Can install a pre-commit hook when `--install-hook` is explicitly requested.
 
 #### `celador scan`
 
-- Parses supported lockfile formats for the current v1 scope.
-- Queries OSV.dev through batch requests.
+- Parses supported lockfile formats in the current scope.
+- Queries OSV.dev through batch requests with cache support.
 - Loads framework rule packs and produces security findings.
 - Supports ignore rules and persistent cache reuse.
 - Uses TTL-aware and offline-aware cache behavior to reduce network dependence.
@@ -39,19 +37,22 @@ This keeps business logic isolated from external integrations such as OSV.dev, l
 #### `celador fix`
 
 - Produces conservative remediation plans.
-- Applies manifest-focused changes intended to minimize project breakage.
-- Surfaces fix context and impact boundaries for the current v1 scope.
+- Applies manifest-focused changes to `package.json`.
+- Bumps direct dependency versions when possible and otherwise writes overrides.
+- Does not currently update lockfiles directly.
 
 #### `celador install`
 
 - Provides a scoped zero-trust preflight wrapper.
-- Detects selected suspicious install-time patterns before handoff.
+- Assesses the first requested package before installation.
+- Detects suspicious install-time patterns before handing off to npm, pnpm, or Bun.
 - Preserves CI-safe and non-interactive behavior.
 
 ### Security and Rules
 
-- OSV batch integration is implemented through a dedicated adapter.
-- Built-in rule packs currently include examples such as Next.js and Vite.
+- OSV integration is implemented through a dedicated adapter.
+- Built-in rule packs currently cover Next.js and Vite-family configuration checks.
+- Tailwind arbitrary values are checked with a simple string heuristic.
 - Ignore support is available through managed ignore storage.
 - Guidance generation injects supply-chain rules for AI assistants and contributors.
 
@@ -66,20 +67,20 @@ The implementation includes persistent caching designed around:
 
 ### Testing and Validation
 
-The project now includes unit and end-to-end test coverage across core flows and managed-file behavior. Validation reported during SDD execution passed with:
+The project includes unit and end-to-end test coverage across core flows and managed-file behavior. Common validation commands are:
 
 - `go build ./...`
 - `go vet ./...`
 - `go test ./...`
 
-### Current v1 Boundaries
+### Current Boundaries
 
-The implemented v1 intentionally keeps some areas conservative:
+The current implementation intentionally keeps some areas conservative:
 
-- `fix` is primarily manifest-focused rather than fully lockfile-mutating.
-- Bun support targets text lockfile handling for the current scope.
-- Rich Bubble Tea flows are not yet the dominant interaction layer; terminal behavior exists with TTY-aware fallbacks.
-- Some non-critical warnings remain around runtime proof depth and total coverage.
+- `fix` is manifest-focused rather than fully lockfile-mutating.
+- install handoff is supported for npm, pnpm, and Bun, but not Deno.
+- framework detection is broader than the active built-in rule packs.
+- terminal behavior is plain-text first, with prompting only when a TTY is available.
 
 ### Important Files
 
@@ -91,10 +92,10 @@ The implemented v1 intentionally keeps some areas conservative:
 - `internal/core/audit/service.go` — audit orchestration and cache-aware scanning.
 - `internal/core/fix/service.go` — remediation planning and application.
 - `internal/core/install/service.go` — install preflight workflow.
-- `internal/adapters/osv/client.go` — OSV batch client.
+- `internal/adapters/osv/client.go` — OSV client.
 - `internal/adapters/cache/file_cache.go` — persistent cache implementation.
-- `internal/adapters/fs/templates.go` — managed template rendering and merge preservation.
+- `internal/adapters/fs/templates.go` — managed section rendering and merge preservation.
 
-### Final Status
+### Status
 
-The SDD change `implement-celador-cli-v1` was archived as pass-with-warnings: the core CLI v1 scope is delivered and validated, with follow-up improvements recommended for broader fix application, deeper proof of some runtime behaviors, and higher overall coverage.
+The repository currently delivers the documented CLI scope with release automation for GitHub Releases and a dedicated Homebrew tap, plus Windows release-asset distribution through GitHub Releases.
