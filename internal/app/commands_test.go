@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	fsadapter "github.com/GustavoGutierrez/celador/internal/adapters/fs"
+	uiadapter "github.com/GustavoGutierrez/celador/internal/adapters/tui"
 	"github.com/GustavoGutierrez/celador/internal/core/audit"
 	"github.com/GustavoGutierrez/celador/internal/core/fix"
 	"github.com/GustavoGutierrez/celador/internal/core/install"
@@ -51,6 +53,62 @@ func TestScanCommandUnsupportedInput(t *testing.T) {
 	err := cmd.ExecuteContext(context.Background())
 	if err == nil || err.Error() != "no supported lockfile found (package-lock.json, pnpm-lock.yaml, bun.lock, deno.lock)" {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestScanCommandUsesRenderedFindingCountInExitMessage(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fs := fsadapter.NewOSFileSystem(root)
+	mustWriteAppFile(t, fs, filepath.Join(root, "package.json"), `{"engines":{"node":"20.0.0"},"dependencies":{"@smithy/config-resolver":"3.0.6"}}`)
+	mustWriteAppFile(t, fs, filepath.Join(root, "package-lock.json"), `{"packages":{"node_modules/@smithy/config-resolver":{"version":"3.0.6"}}}`)
+
+	var out bytes.Buffer
+	ui := uiadapter.NewTerminalUI(strings.NewReader(""), &out, false, true)
+	finding := shared.Finding{
+		ID:          "GHSA-abcd-1234",
+		Source:      shared.FindingSourceOSV,
+		Severity:    shared.SeverityHigh,
+		PackageName: "@smithy/config-resolver",
+		Target:      "@smithy/config-resolver",
+		Summary:     "Prototype pollution in config resolution",
+		FixVersion:  "3.0.7",
+		Fixable:     true,
+	}
+	scanSvc := audit.NewService(
+		helpers.StubDetector{Workspace: shared.Workspace{Root: root, PackageManager: shared.PackageManagerNPM, Lockfiles: []string{filepath.Join(root, "package-lock.json")}, ManifestPath: filepath.Join(root, "package.json")}},
+		helpers.StubIgnore{},
+		helpers.StubRuleLoader{Version: "v1"},
+		helpers.StubRuleEvaluator{},
+		&helpers.StubOSV{Findings: []shared.Finding{finding, finding}},
+		&helpers.StubCache{},
+		helpers.StubClock{Value: time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)},
+		24*time.Hour,
+		[]ports.LockfileParser{audit.NewNPMParser(fs)},
+	)
+	rt := &Runtime{
+		Root:    root,
+		TTY:     false,
+		CI:      true,
+		FS:      fs,
+		UI:      ui,
+		ScanSvc: scanSvc,
+	}
+	cmd := newRootCommand(rt)
+	cmd.SetArgs([]string{"scan"})
+
+	err := cmd.ExecuteContext(context.Background())
+	assertExitCode(t, err, 3)
+	if err.Error() != "1 findings detected" {
+		t.Fatalf("expected deduplicated exit message, got %q", err.Error())
+	}
+	got := out.String()
+	if !strings.Contains(got, "Findings: 1 (ignored: 0)") {
+		t.Fatalf("expected rendered header to use the same finding count, got %q", got)
+	}
+	if strings.Count(got, "GHSA-abcd-1234") != 1 {
+		t.Fatalf("expected a single rendered finding, got %q", got)
 	}
 }
 

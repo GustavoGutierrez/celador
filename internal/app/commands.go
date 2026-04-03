@@ -102,8 +102,9 @@ func newScanCommand(rt *Runtime) *cobra.Command {
 			if err := rt.UI.RenderScan(cmd.Context(), result); err != nil {
 				return err
 			}
-			if len(result.Findings) > 0 {
-				return NewExitError(3, "%d findings detected", len(result.Findings))
+			renderedFindingCount := shared.RenderedFindingCount(result.Findings)
+			if renderedFindingCount > 0 {
+				return NewExitError(3, "%d findings detected", renderedFindingCount)
 			}
 			return nil
 		},
