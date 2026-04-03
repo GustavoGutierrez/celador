@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "specifiers": {
+      "lodash": "npm:4.17.20",
+      "minimist": "npm:1.2.5"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+version: v1
+rules:
+  - id: next-powered-by-header
+    frameworks: [next]
+    file: next.config.js
+    mustContain: "poweredByHeader: false"
+    severity: high
+    summary: "Next.js must disable the poweredBy header"
+  - id: next-remote-pattern-wildcard
+    frameworks: [next]
+    file: next.config.js
+    mustNotFind: "hostname: '*'"
+    severity: high
+    summary: "Next.js remotePatterns must not use wildcard hostnames"
