@@ -70,6 +70,29 @@ jobs:
       - name: Verify CLI entrypoint
         run: go list ./cmd/celador
 
+      - name: Remove existing release assets for reruns
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release $TAG does not exist yet; nothing to clean up."
+            exit 0
+          fi
+
+          for asset in \
+            "checksums.txt" \
+            "celador_${VERSION}_linux_amd64.tar.gz" \
+            "celador_${VERSION}_darwin_arm64.tar.gz" \
+            "celador_${VERSION}_windows_amd64.zip"
+          do
+            gh release delete-asset "$TAG" "$asset" --repo "${GITHUB_REPOSITORY}" --yes || true
+          done
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
