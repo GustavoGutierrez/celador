@@ -21,14 +21,15 @@ Celador is a zero-trust supply chain security CLI for modern JavaScript/TypeScri
 
 ## 📦 Installation
 
-Since Celador is a pre-compiled Go binary, installation is instant:
+Celador is distributed as a precompiled Go CLI binary:
 
 ```bash
-npm install -g celador-cli
-# or via Homebrew
+# install via the Homebrew tap branch
+brew tap GustavoGutierrez/celador https://github.com/GustavoGutierrez/celador homebrew-tap
 brew install celador
-# or via universal script
-curl -fsSL https://celador.dev/install.sh | sh
+
+# or download a release archive from GitHub Releases
+# https://github.com/GustavoGutierrez/celador/releases
 ```
 
 ## 🛠️ Usage

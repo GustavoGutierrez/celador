@@ -1,0 +1,200 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing version tag to release or republish (for example v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish release assets
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+            git fetch --tags --force
+            git rev-parse "$TAG" >/dev/null 2>&1 || {
+              echo "Tag ${TAG} does not exist on the repository." >&2
+              exit 1
+            }
+            git checkout "$TAG"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+
+          case "$TAG" in
+            v*) ;;
+            *)
+              echo "Release tags must start with 'v'. Got: $TAG" >&2
+              exit 1
+              ;;
+          esac
+
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Verify CLI entrypoint
+        run: go list ./cmd/celador
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean --config .goreleaser.yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew-tap:
+    name: Update Homebrew tap branch
+    runs-on: ubuntu-latest
+    needs: release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download checksums from GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          gh release download "$TAG" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern "checksums.txt" \
+            --output "$RUNNER_TEMP/checksums.txt" \
+            --clobber
+
+      - name: Render Homebrew formula
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          CHECKSUMS_FILE: ${{ runner.temp }}/checksums.txt
+          OUTPUT_FILE: ${{ runner.temp }}/celador.rb
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          checksum_path = Path(os.environ["CHECKSUMS_FILE"])
+          output_path = Path(os.environ["OUTPUT_FILE"])
+
+          checksums = {}
+          for line in checksum_path.read_text().splitlines():
+            line = line.strip()
+            if not line:
+              continue
+            sha, name = line.split(None, 1)
+            checksums[name.strip()] = sha
+
+          required_assets = {
+            "__DARWIN_ARM64_SHA256__": f"celador_{version}_darwin_arm64.tar.gz",
+            "__LINUX_AMD64_SHA256__": f"celador_{version}_linux_amd64.tar.gz",
+          }
+
+          missing = [asset for asset in required_assets.values() if asset not in checksums]
+          if missing:
+            raise SystemExit(f"missing release assets in checksums.txt: {', '.join(missing)}")
+
+          formula = Path("homebrew-tap/Formula/celador.rb").read_text()
+          replacements = {
+            "__VERSION__": version,
+            **{placeholder: checksums[asset] for placeholder, asset in required_assets.items()},
+          }
+
+          for placeholder, value in replacements.items():
+            formula = formula.replace(placeholder, value)
+
+          output_path.write_text(formula)
+          PY
+
+      - name: Publish homebrew-tap branch
+        env:
+          TAG: ${{ needs.release.outputs.tag }}
+          FORMULA_FILE: ${{ runner.temp }}/celador.rb
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin "homebrew-tap:refs/remotes/origin/homebrew-tap" || true
+
+          WORKTREE="$RUNNER_TEMP/homebrew-tap"
+          rm -rf "$WORKTREE"
+
+          if git show-ref --verify --quiet refs/remotes/origin/homebrew-tap; then
+            git worktree add --detach "$WORKTREE" refs/remotes/origin/homebrew-tap
+            git -C "$WORKTREE" checkout -B homebrew-tap
+          else
+            git worktree add --detach "$WORKTREE"
+            git -C "$WORKTREE" checkout --orphan homebrew-tap
+          fi
+
+          WORKTREE="$WORKTREE" python3 - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path
+
+          root = Path(os.environ["WORKTREE"])
+          for child in root.iterdir():
+            if child.name == ".git":
+              continue
+            if child.is_dir():
+              shutil.rmtree(child)
+            else:
+              child.unlink()
+          PY
+
+          mkdir -p "$WORKTREE/Formula"
+          cp homebrew-tap/README.md "$WORKTREE/README.md"
+          cp homebrew-tap/RELEASE_PROCESS.md "$WORKTREE/RELEASE_PROCESS.md"
+          cp homebrew-tap/LICENSE "$WORKTREE/LICENSE"
+          cp "$FORMULA_FILE" "$WORKTREE/Formula/celador.rb"
+
+          git -C "$WORKTREE" add README.md RELEASE_PROCESS.md LICENSE Formula/celador.rb
+
+          if git -C "$WORKTREE" diff --cached --quiet; then
+            echo "homebrew-tap already up to date"
+            exit 0
+          fi
+
+          git -C "$WORKTREE" \
+            -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "Update Celador Homebrew formula for $TAG"
+
+          git -C "$WORKTREE" push origin HEAD:homebrew-tap

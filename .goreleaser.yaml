@@ -1,0 +1,68 @@
+version: 2
+
+project_name: celador
+
+builds:
+  - id: celador-unix
+    main: ./cmd/celador
+    binary: celador
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: linux
+        goarch: arm64
+      - goos: darwin
+        goarch: amd64
+  - id: celador-windows
+    main: ./cmd/celador
+    binary: celador
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+    goarch:
+      - amd64
+
+archives:
+  - id: celador-unix
+    ids:
+      - celador-unix
+    name_template: "celador_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    wrap_in_directory: false
+  - id: celador-windows
+    ids:
+      - celador-windows
+    name_template: "celador_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - zip
+    wrap_in_directory: false
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  github:
+    owner: GustavoGutierrez
+    name: celador
+  draft: false
+  prerelease: auto
+  replace_existing_draft: true
+
+snapshot:
+  version_template: "{{ .Version }}-next"
