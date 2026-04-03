@@ -63,6 +63,8 @@ release:
   draft: false
   prerelease: auto
   replace_existing_draft: true
+  replace_existing_artifacts: true
+  mode: replace
 
 snapshot:
   version_template: "{{ .Version }}-next"
