@@ -43,12 +43,14 @@ func (ui *TerminalUI) Confirm(_ context.Context, prompt string) (bool, error) {
 }
 
 func (ui *TerminalUI) RenderScan(_ context.Context, result shared.ScanResult) error {
-	_, err := fmt.Fprintf(ui.out, "Scan fingerprint: %s\nFindings: %d (ignored: %d)\n", result.Fingerprint, len(result.Findings), result.IgnoredCount)
+	renderedFindings := renderFindingLines(result.Findings)
+
+	_, err := fmt.Fprintf(ui.out, "Scan fingerprint: %s\nFindings: %d (ignored: %d)\n", result.Fingerprint, len(renderedFindings), result.IgnoredCount)
 	if err != nil {
 		return err
 	}
-	for _, finding := range result.Findings {
-		if _, err := fmt.Fprintf(ui.out, "- [%s] %s\n", finding.Severity, formatFindingLine(finding)); err != nil {
+	for _, line := range renderedFindings {
+		if _, err := fmt.Fprintf(ui.out, "- %s\n", line); err != nil {
 			return err
 		}
 	}
@@ -61,10 +63,79 @@ func (ui *TerminalUI) RenderScan(_ context.Context, result shared.ScanResult) er
 	return err
 }
 
+func renderFindingLines(findings []shared.Finding) []string {
+	type findingGroup struct {
+		severity shared.Severity
+		base     string
+		items    []shared.Finding
+	}
+
+	groups := make(map[string]*findingGroup, len(findings))
+	order := make([]string, 0, len(findings))
+
+	for _, finding := range findings {
+		base := formatFindingLine(finding)
+		key := renderedFindingKey(finding.Severity, base)
+		group, ok := groups[key]
+		if !ok {
+			group = &findingGroup{severity: finding.Severity, base: base}
+			groups[key] = group
+			order = append(order, key)
+		}
+		group.items = append(group.items, finding)
+	}
+
+	lines := make([]string, 0, len(order))
+	for _, key := range order {
+		group := groups[key]
+		if len(group.items) == 1 {
+			lines = append(lines, formatRenderedFinding(group.severity, group.base))
+			continue
+		}
+
+		detailed := uniqueDetailedFindingLines(group.severity, group.items)
+		if len(detailed) > 1 {
+			lines = append(lines, detailed...)
+			continue
+		}
+
+		lines = append(lines, formatRenderedFinding(group.severity, group.base))
+	}
+
+	return lines
+}
+
+func uniqueDetailedFindingLines(severity shared.Severity, findings []shared.Finding) []string {
+	seen := make(map[string]struct{}, len(findings))
+	lines := make([]string, 0, len(findings))
+
+	for _, finding := range findings {
+		line := formatRenderedFinding(severity, formatFindingLineWithContext(finding, formatDuplicateFindingContext(finding)))
+		if _, ok := seen[line]; ok {
+			continue
+		}
+		seen[line] = struct{}{}
+		lines = append(lines, line)
+	}
+
+	return lines
+}
+
+func renderedFindingKey(severity shared.Severity, line string) string {
+	return string(severity) + "\x00" + line
+}
+
+func formatRenderedFinding(severity shared.Severity, line string) string {
+	return fmt.Sprintf("[%s] %s", severity, line)
+}
+
 func formatFindingLine(finding shared.Finding) string {
+	return formatFindingLineWithContext(finding, formatFindingContext(finding))
+}
+
+func formatFindingLineWithContext(finding shared.Finding, context string) string {
 	parts := []string{finding.ID}
 
-	context := formatFindingContext(finding)
 	if context != "" {
 		parts = append(parts, context)
 	}
@@ -82,6 +153,32 @@ func formatFindingLine(finding shared.Finding) string {
 	}
 
 	return strings.Join(parts, ": ")
+}
+
+func formatDuplicateFindingContext(finding shared.Finding) string {
+	context := formatFindingContext(finding)
+	extra := duplicateFindingExtraContext(finding)
+	if extra == "" {
+		return context
+	}
+	if context == "" {
+		return extra
+	}
+	return fmt.Sprintf("%s (%s)", context, extra)
+}
+
+func duplicateFindingExtraContext(finding shared.Finding) string {
+	if finding.Source != shared.FindingSourceOSV {
+		return ""
+	}
+
+	pkg := strings.TrimSpace(finding.PackageName)
+	target := strings.TrimSpace(finding.Target)
+	if pkg == "" || target == "" || pkg == target {
+		return ""
+	}
+
+	return fmt.Sprintf("target %s", target)
 }
 
 func formatFindingContext(finding shared.Finding) string {

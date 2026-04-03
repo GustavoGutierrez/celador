@@ -71,6 +71,87 @@ func TestRenderScanFormatsRuleFindingWithLocation(t *testing.T) {
 	}
 }
 
+func TestRenderScanDeduplicatesIdenticalRenderedFindings(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	ui := NewTerminalUI(strings.NewReader(""), &out, false, true)
+
+	finding := shared.Finding{
+		ID:          "GHSA-abcd-1234",
+		Source:      shared.FindingSourceOSV,
+		Severity:    shared.SeverityHigh,
+		PackageName: "@smithy/config-resolver",
+		Target:      "@smithy/config-resolver",
+		Summary:     "Prototype pollution in config resolution",
+		FixVersion:  "3.0.7",
+		Fixable:     true,
+	}
+
+	err := ui.RenderScan(context.Background(), shared.ScanResult{
+		Fingerprint: "fp-dup",
+		Findings:    []shared.Finding{finding, finding},
+	})
+	if err != nil {
+		t.Fatalf("render scan: %v", err)
+	}
+
+	got := out.String()
+	wantLine := "- [high] GHSA-abcd-1234: package @smithy/config-resolver: Prototype pollution in config resolution: fixed in 3.0.7"
+	if strings.Count(got, wantLine) != 1 {
+		t.Fatalf("expected deduplicated finding line once, got %q", got)
+	}
+	if !strings.Contains(got, "Findings: 1 (ignored: 0)") {
+		t.Fatalf("expected rendered findings count to reflect deduplication, got %q", got)
+	}
+	if strings.Count(got, "GHSA-abcd-1234") != 1 {
+		t.Fatalf("expected duplicate GHSA entry to be removed, got %q", got)
+	}
+}
+
+func TestRenderScanSurfacesDistinctTargetContextForDuplicateOSVFindings(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	ui := NewTerminalUI(strings.NewReader(""), &out, false, true)
+
+	err := ui.RenderScan(context.Background(), shared.ScanResult{
+		Fingerprint: "fp-context",
+		Findings: []shared.Finding{
+			{
+				ID:          "GHSA-abcd-1234",
+				Source:      shared.FindingSourceOSV,
+				Severity:    shared.SeverityHigh,
+				PackageName: "lodash",
+				Target:      "apps/api/package-lock.json",
+				Summary:     "Prototype pollution in merge helper",
+			},
+			{
+				ID:          "GHSA-abcd-1234",
+				Source:      shared.FindingSourceOSV,
+				Severity:    shared.SeverityHigh,
+				PackageName: "lodash",
+				Target:      "apps/web/package-lock.json",
+				Summary:     "Prototype pollution in merge helper",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render scan: %v", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{
+		"- [high] GHSA-abcd-1234: package lodash (target apps/api/package-lock.json): Prototype pollution in merge helper",
+		"- [high] GHSA-abcd-1234: package lodash (target apps/web/package-lock.json): Prototype pollution in merge helper",
+		"Findings: 2 (ignored: 0)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in output, got %q", want, got)
+		}
+	}
+}
+
 func TestRenderFixPlanExplainsZeroPlanCategories(t *testing.T) {
 	t.Parallel()
 
