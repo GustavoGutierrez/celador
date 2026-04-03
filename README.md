@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="celador.png" width="500" alt="Celador CLI" />
+</p>
+
 # 🛡️ Celador CLI
 
 > "The security deadlock for your dependencies."
@@ -21,19 +25,41 @@ Celador is a zero-trust supply chain security CLI for modern JavaScript/TypeScri
 
 ## 📦 Installation
 
-Celador is distributed as a precompiled Go CLI binary:
+Celador is distributed as a precompiled Go CLI binary.
+
+### macOS and Linux (Homebrew)
+
+Use Homebrew on supported macOS and Linux environments:
 
 ```bash
-# Homebrew tap repository: GustavoGutierrez/homebrew-celador
 brew tap GustavoGutierrez/celador
 brew install GustavoGutierrez/celador/celador
-
-# or download a release archive from GitHub Releases
-# https://github.com/GustavoGutierrez/celador/releases
 ```
 
-The `brew tap GustavoGutierrez/celador` command works because Homebrew resolves it to the dedicated
-tap repository `GustavoGutierrez/homebrew-celador`.
+The tap command above is correct after the dedicated tap migration because Homebrew resolves
+`brew tap GustavoGutierrez/celador` to the repository `GustavoGutierrez/homebrew-celador`.
+
+Upgrade with the normal Homebrew flow:
+
+```bash
+brew update
+brew upgrade celador
+```
+
+Uninstall with:
+
+```bash
+brew uninstall celador
+brew untap GustavoGutierrez/celador
+```
+
+### Windows
+
+Do **not** install Celador on Windows with Homebrew. Download the Windows release asset from GitHub
+Releases instead:
+
+- Releases: `https://github.com/GustavoGutierrez/celador/releases`
+- Expected archive: `celador_X.Y.Z_windows_amd64.zip`
 
 ## 🛠️ Usage
 
