@@ -151,6 +151,91 @@ func TestPlanUsesRenderedFindingRepresentatives(t *testing.T) {
 	assertReasonCount(t, plan.Reasons, shared.FixPlanReasonNoFixedVersion, 1)
 }
 
+func TestPlanLeavesNonConservativeUpgradesForReview(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fs := fsadapter.NewOSFileSystem(root)
+	if err := fs.WriteFile(context.Background(), filepath.Join(root, "package.json"), []byte(`{"dependencies":{"lodash":"4.17.20","next":"15.2.4","jspdf":"^3.0.3","nodemailer":"^7.0.6"}}`)); err != nil {
+		t.Fatalf("write package.json: %v", err)
+	}
+	if err := fs.WriteFile(context.Background(), filepath.Join(root, "package-lock.json"), []byte(`{"packages":{"node_modules/lodash":{"version":"4.17.20"},"node_modules/next":{"version":"15.2.4"},"node_modules/jspdf":{"version":"3.0.3"},"node_modules/nodemailer":{"version":"7.0.6"},"node_modules/minimist":{"version":"1.2.7"}}}`)); err != nil {
+		t.Fatalf("write lockfile: %v", err)
+	}
+
+	service := audit.NewService(
+		helpers.StubDetector{Workspace: shared.Workspace{Root: root, PackageManager: shared.PackageManagerNPM, Lockfiles: []string{filepath.Join(root, "package-lock.json")}, ManifestPath: filepath.Join(root, "package.json")}},
+		helpers.StubIgnore{},
+		helpers.StubRuleLoader{Version: "v1"},
+		helpers.StubRuleEvaluator{},
+		&helpers.StubOSV{Findings: []shared.Finding{
+			{ID: "OSV-safe", Source: shared.FindingSourceOSV, Severity: shared.SeverityHigh, PackageName: "lodash", Target: "lodash", Summary: "safe patch", FixVersion: "4.17.21", Fixable: true},
+			{ID: "OSV-prerelease", Source: shared.FindingSourceOSV, Severity: shared.SeverityHigh, PackageName: "next", Target: "next", Summary: "prerelease only", FixVersion: "15.6.0-canary.61", Fixable: true},
+			{ID: "OSV-major-jspdf", Source: shared.FindingSourceOSV, Severity: shared.SeverityHigh, PackageName: "jspdf", Target: "jspdf", Summary: "major bump", FixVersion: "4.2.1", Fixable: true},
+			{ID: "OSV-major-nodemailer", Source: shared.FindingSourceOSV, Severity: shared.SeverityHigh, PackageName: "nodemailer", Target: "nodemailer", Summary: "major bump", FixVersion: "8.0.4", Fixable: true},
+			{ID: "OSV-override", Source: shared.FindingSourceOSV, Severity: shared.SeverityHigh, PackageName: "minimist", Target: "minimist", Summary: "safe override", FixVersion: "1.2.8", Fixable: true},
+		}},
+		&helpers.StubCache{},
+		helpers.StubClock{Value: time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)},
+		24*time.Hour,
+		[]ports.LockfileParser{audit.NewNPMParser(fs)},
+	)
+
+	fixer := NewService(service, &helpers.StubPatchWriter{}, fs, &helpers.StubUI{})
+	plan, err := fixer.Plan(context.Background(), root, false, true)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if len(plan.Operations) != 2 {
+		t.Fatalf("expected two safe operations, got %d", len(plan.Operations))
+	}
+	if plan.Operations[0].PackageName != "lodash" || plan.Operations[1].PackageName != "minimist" {
+		t.Fatalf("expected lodash bump and minimist override, got %+v", plan.Operations)
+	}
+	if plan.Operations[1].Strategy != "override" {
+		t.Fatalf("expected minimist to stay an override, got %+v", plan.Operations[1])
+	}
+	assertReasonCount(t, plan.Reasons, shared.FixPlanReasonNonConservativeUpgrade, 3)
+	assertReasonMissing(t, plan.Reasons, shared.FixPlanReasonManualChange)
+	assertReasonMissing(t, plan.Reasons, shared.FixPlanReasonOutsideScope)
+	assertReasonMissing(t, plan.Reasons, shared.FixPlanReasonNoFixedVersion)
+}
+
+func TestPlanRejectsPrereleaseOverrideWithoutManifestVersion(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fs := fsadapter.NewOSFileSystem(root)
+	if err := fs.WriteFile(context.Background(), filepath.Join(root, "package.json"), []byte(`{"dependencies":{"lodash":"4.17.20"}}`)); err != nil {
+		t.Fatalf("write package.json: %v", err)
+	}
+	if err := fs.WriteFile(context.Background(), filepath.Join(root, "package-lock.json"), []byte(`{"packages":{"node_modules/lodash":{"version":"4.17.20"},"node_modules/minimist":{"version":"1.2.7"}}}`)); err != nil {
+		t.Fatalf("write lockfile: %v", err)
+	}
+
+	service := audit.NewService(
+		helpers.StubDetector{Workspace: shared.Workspace{Root: root, PackageManager: shared.PackageManagerNPM, Lockfiles: []string{filepath.Join(root, "package-lock.json")}, ManifestPath: filepath.Join(root, "package.json")}},
+		helpers.StubIgnore{},
+		helpers.StubRuleLoader{Version: "v1"},
+		helpers.StubRuleEvaluator{},
+		&helpers.StubOSV{Findings: []shared.Finding{{ID: "OSV-prerelease-override", Source: shared.FindingSourceOSV, Severity: shared.SeverityHigh, PackageName: "minimist", Target: "minimist", Summary: "transitive prerelease", FixVersion: "1.2.9-rc.1", Fixable: true}}},
+		&helpers.StubCache{},
+		helpers.StubClock{Value: time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)},
+		24*time.Hour,
+		[]ports.LockfileParser{audit.NewNPMParser(fs)},
+	)
+
+	fixer := NewService(service, &helpers.StubPatchWriter{}, fs, &helpers.StubUI{})
+	plan, err := fixer.Plan(context.Background(), root, false, true)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if len(plan.Operations) != 0 {
+		t.Fatalf("expected no auto-planned operations, got %+v", plan.Operations)
+	}
+	assertReasonCount(t, plan.Reasons, shared.FixPlanReasonNonConservativeUpgrade, 1)
+}
+
 func assertReasonCount(t *testing.T, reasons []shared.FixPlanReason, category shared.FixPlanReasonCategory, want int) {
 	t.Helper()
 	for _, reason := range reasons {
@@ -162,4 +247,13 @@ func assertReasonCount(t *testing.T, reasons []shared.FixPlanReason, category sh
 		}
 	}
 	t.Fatalf("missing reason category %s", category)
+}
+
+func assertReasonMissing(t *testing.T, reasons []shared.FixPlanReason, category shared.FixPlanReasonCategory) {
+	t.Helper()
+	for _, reason := range reasons {
+		if reason.Category == category {
+			t.Fatalf("expected reason category %s to be absent, got %+v", category, reason)
+		}
+	}
 }

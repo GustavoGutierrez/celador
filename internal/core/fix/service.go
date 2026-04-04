@@ -50,6 +50,10 @@ func (s *Service) Plan(ctx context.Context, root string, tty bool, ci bool) (sha
 			section = current.Section
 			currentVersion = current.Version
 		}
+		if reason, ok := classifyNonConservativeUpgrade(currentVersion, finding.FixVersion); ok {
+			reasons.Add(reason, formatFindingExample(finding))
+			continue
+		}
 		ops = append(ops, shared.FixOperation{
 			File:            result.Workspace.ManifestPath,
 			ManifestSection: section,
@@ -125,6 +129,27 @@ func classifyUnplannedFinding(finding shared.Finding) (shared.FixPlanReasonCateg
 	return "", false
 }
 
+func classifyNonConservativeUpgrade(currentVersion string, proposedVersion string) (shared.FixPlanReasonCategory, bool) {
+	if shared.NormalizeVersion(proposedVersion) == "" {
+		return shared.FixPlanReasonNonConservativeUpgrade, true
+	}
+	if shared.IsPrereleaseVersion(proposedVersion) {
+		return shared.FixPlanReasonNonConservativeUpgrade, true
+	}
+	if strings.TrimSpace(currentVersion) == "" {
+		return "", false
+	}
+	currentMajor := shared.VersionMajor(currentVersion)
+	proposedMajor := shared.VersionMajor(proposedVersion)
+	if currentMajor == "" || proposedMajor == "" {
+		return shared.FixPlanReasonNonConservativeUpgrade, true
+	}
+	if currentMajor != proposedMajor {
+		return shared.FixPlanReasonNonConservativeUpgrade, true
+	}
+	return "", false
+}
+
 func formatFindingExample(finding shared.Finding) string {
 	parts := []string{strings.TrimSpace(finding.ID)}
 	if pkg := strings.TrimSpace(finding.PackageName); pkg != "" {
@@ -139,9 +164,10 @@ type reasonAccumulator map[shared.FixPlanReasonCategory]*shared.FixPlanReason
 
 func newReasonAccumulator() reasonAccumulator {
 	return reasonAccumulator{
-		shared.FixPlanReasonNoFixedVersion: {Category: shared.FixPlanReasonNoFixedVersion},
-		shared.FixPlanReasonManualChange:   {Category: shared.FixPlanReasonManualChange},
-		shared.FixPlanReasonOutsideScope:   {Category: shared.FixPlanReasonOutsideScope},
+		shared.FixPlanReasonNoFixedVersion:         {Category: shared.FixPlanReasonNoFixedVersion},
+		shared.FixPlanReasonManualChange:           {Category: shared.FixPlanReasonManualChange},
+		shared.FixPlanReasonNonConservativeUpgrade: {Category: shared.FixPlanReasonNonConservativeUpgrade},
+		shared.FixPlanReasonOutsideScope:           {Category: shared.FixPlanReasonOutsideScope},
 	}
 }
 
@@ -161,6 +187,7 @@ func (a reasonAccumulator) List() []shared.FixPlanReason {
 	ordered := []shared.FixPlanReasonCategory{
 		shared.FixPlanReasonNoFixedVersion,
 		shared.FixPlanReasonManualChange,
+		shared.FixPlanReasonNonConservativeUpgrade,
 		shared.FixPlanReasonOutsideScope,
 	}
 	result := make([]shared.FixPlanReason, 0, len(ordered))

@@ -357,6 +357,7 @@ func TestRenderFixPlanExplainsZeroPlanCategories(t *testing.T) {
 		Reasons: []shared.FixPlanReason{
 			{Category: shared.FixPlanReasonNoFixedVersion, Count: 1, Examples: []string{"OSV-1 — package lodash"}},
 			{Category: shared.FixPlanReasonManualChange, Count: 1, Examples: []string{"rule-1 — target src/app.tsx"}},
+			{Category: shared.FixPlanReasonNonConservativeUpgrade, Count: 1, Examples: []string{"OSV-unsafe — package next"}},
 			{Category: shared.FixPlanReasonOutsideScope, Count: 1, Examples: []string{"OSV-2 — target lockfile-only"}},
 		},
 	})
@@ -374,6 +375,8 @@ func TestRenderFixPlanExplainsZeroPlanCategories(t *testing.T) {
 		"Examples: OSV-1 — package lodash",
 		"✓ manual remediation required = 1 finding INFO",
 		"Examples: rule-1 — target src/app.tsx",
+		"✓ non-conservative upgrade requires review = 1 finding INFO",
+		"Examples: OSV-unsafe — package next",
 		"✓ outside current remediation scope = 1 finding INFO",
 		"Examples: OSV-2 — target lockfile-only",
 		"Diff preview",

@@ -113,9 +113,10 @@ type FixOperation struct {
 type FixPlanReasonCategory string
 
 const (
-	FixPlanReasonNoFixedVersion FixPlanReasonCategory = "no_fixed_version"
-	FixPlanReasonManualChange   FixPlanReasonCategory = "manual_change"
-	FixPlanReasonOutsideScope   FixPlanReasonCategory = "outside_scope"
+	FixPlanReasonNoFixedVersion         FixPlanReasonCategory = "no_fixed_version"
+	FixPlanReasonManualChange           FixPlanReasonCategory = "manual_change"
+	FixPlanReasonNonConservativeUpgrade FixPlanReasonCategory = "non_conservative_upgrade"
+	FixPlanReasonOutsideScope           FixPlanReasonCategory = "outside_scope"
 )
 
 type FixPlanReason struct {

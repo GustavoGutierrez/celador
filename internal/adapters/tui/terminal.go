@@ -454,6 +454,8 @@ func formatFixPlanReason(reason shared.FixPlanReason) string {
 		label = pluralize(reason.Count, "no known fixed version", "no known fixed version")
 	case shared.FixPlanReasonManualChange:
 		label = pluralize(reason.Count, "manual remediation required", "manual remediation required")
+	case shared.FixPlanReasonNonConservativeUpgrade:
+		label = pluralize(reason.Count, "non-conservative upgrade requires review", "non-conservative upgrade requires review")
 	case shared.FixPlanReasonOutsideScope:
 		label = pluralize(reason.Count, "outside current remediation scope", "outside current remediation scope")
 	}
@@ -469,6 +471,8 @@ func formatFixReasonLabel(reason shared.FixPlanReason) string {
 		return "no known fixed version"
 	case shared.FixPlanReasonManualChange:
 		return "manual remediation required"
+	case shared.FixPlanReasonNonConservativeUpgrade:
+		return "non-conservative upgrade requires review"
 	case shared.FixPlanReasonOutsideScope:
 		return "outside current remediation scope"
 	default:
