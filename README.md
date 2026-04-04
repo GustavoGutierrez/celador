@@ -70,4 +70,4 @@ Celador is a Go CLI built with **hexagonal architecture (ports and adapters)**.
 - Architecture details live in [`docs/architecture.md`](docs/architecture.md).
 
 ## 📄 License
-MIT License.
+GPL License.
