@@ -2,10 +2,10 @@ package pm
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os/exec"
 
+	installcore "github.com/GustavoGutierrez/celador/internal/core/install"
 	"github.com/GustavoGutierrez/celador/internal/core/shared"
 )
 
@@ -19,20 +19,9 @@ func NewExecutor(stdout io.Writer, stderr io.Writer) *Executor {
 }
 
 func (e *Executor) Install(ctx context.Context, workspace shared.Workspace, args []string) error {
-	var binary string
-	var cmdArgs []string
-	switch workspace.PackageManager {
-	case shared.PackageManagerNPM:
-		binary = "npm"
-		cmdArgs = append([]string{"install"}, args...)
-	case shared.PackageManagerPNPM:
-		binary = "pnpm"
-		cmdArgs = append([]string{"install"}, args...)
-	case shared.PackageManagerBun:
-		binary = "bun"
-		cmdArgs = append([]string{"add"}, args...)
-	default:
-		return fmt.Errorf("install is unsupported for %s", workspace.PackageManager)
+	binary, cmdArgs, err := installcore.CommandForManager(workspace.PackageManager, args)
+	if err != nil {
+		return err
 	}
 	cmd := exec.CommandContext(ctx, binary, cmdArgs...)
 	cmd.Dir = workspace.Root

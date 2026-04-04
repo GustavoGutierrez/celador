@@ -177,7 +177,7 @@ func dedupeOperations(ops []shared.FixOperation) []shared.FixOperation {
 	byPackage := map[string]shared.FixOperation{}
 	for _, op := range ops {
 		existing, ok := byPackage[op.PackageName]
-		if !ok || existing.ProposedVersion < op.ProposedVersion {
+		if !ok || shared.CompareVersions(existing.ProposedVersion, op.ProposedVersion) < 0 {
 			byPackage[op.PackageName] = op
 		}
 	}

@@ -65,6 +65,47 @@ func TestRunPreservesUnrelatedWorkspaceContent(t *testing.T) {
 	}
 }
 
+func TestRunBuildsChecklistStyleInitReport(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fs := fsadapter.NewOSFileSystem(root)
+	ctx := context.Background()
+	manifest := filepath.Join(root, "package.json")
+	lockfile := filepath.Join(root, "pnpm-lock.yaml")
+	configPath := filepath.Join(root, ".celador.yaml")
+
+	mustWriteWorkspaceFile(t, fs, manifest, `{"name":"demo"}`)
+	mustWriteWorkspaceFile(t, fs, lockfile, "lockfileVersion: '9.0'\npackages: {}\n")
+
+	service := NewService(
+		fs,
+		helpers.StubDetector{Workspace: shared.Workspace{Root: root, PackageManager: shared.PackageManagerPNPM, Lockfiles: []string{lockfile}, ManifestPath: manifest, ConfigPath: configPath, TTY: false, CI: true}},
+		fsadapter.NewIgnoreStore(fs),
+		&helpers.StubUI{},
+		&helpers.StubNodeVersionDetector{Version: "22.19.0", OK: true},
+	)
+
+	result, err := service.Run(ctx, root, false, true, false)
+	if err != nil {
+		t.Fatalf("run init: %v", err)
+	}
+	if result.Report.Title == "" || len(result.Report.Sections) < 3 {
+		t.Fatalf("expected structured init report, got %+v", result.Report)
+	}
+	if result.Report.Sections[0].Title != "Detecting package manager" || result.Report.Sections[0].Summary != "Found pnpm via pnpm-lock.yaml" {
+		t.Fatalf("unexpected detection section: %+v", result.Report.Sections[0])
+	}
+	managerSection := result.Report.Sections[1]
+	if managerSection.Title != "Securing .npmrc" || managerSection.Summary != "new file" {
+		t.Fatalf("unexpected manager section: %+v", managerSection)
+	}
+	assertChecklistItem(t, managerSection.Items, "ignore-scripts", "true", shared.ChecklistStatusNew)
+	assertChecklistItem(t, managerSection.Items, "save-exact", "true", shared.ChecklistStatusNew)
+	manifestSection := result.Report.Sections[2]
+	assertChecklistItem(t, manifestSection.Items, "engines.node", "22.19.0", shared.ChecklistStatusNew)
+}
+
 func TestRunCreatesAgentsWithoutCreatingClaudeOrLLM(t *testing.T) {
 	t.Parallel()
 
@@ -383,4 +424,17 @@ func assertPathMissing(t *testing.T, fs interface {
 	if exists {
 		t.Fatalf("expected %s to be absent", path)
 	}
+}
+
+func assertChecklistItem(t *testing.T, items []shared.ChecklistItem, label string, value string, status shared.ChecklistStatus) {
+	t.Helper()
+	for _, item := range items {
+		if item.Label == label {
+			if item.Value != value || item.Status != status {
+				t.Fatalf("expected %s=%s status=%s, got %+v", label, value, status, item)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing checklist item %s", label)
 }

@@ -45,6 +45,84 @@ func TestRenderScanFormatsOSVFindingWithContextAndFixVersion(t *testing.T) {
 	}
 }
 
+func TestRenderInitUsesChecklistStyleSections(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	ui := NewTerminalUI(strings.NewReader(""), &out, false, true)
+
+	err := ui.RenderInit(context.Background(), shared.InitReport{
+		Title:    "Initialized /tmp/demo (pnpm)",
+		Subtitle: "Workspace hardening completed with conservative defaults.",
+		Sections: []shared.ChecklistSection{
+			{
+				Title:   "Detecting package manager",
+				Summary: "Found pnpm via pnpm-lock.yaml",
+				Items: []shared.ChecklistItem{{
+					Label:  "lockfile",
+					Value:  "pnpm-lock.yaml present",
+					Status: shared.ChecklistStatusUnchanged,
+					Detail: "Celador will use the root lockfile as the source of truth for dependency scanning.",
+				}},
+			},
+			{
+				Title:   "Securing .npmrc",
+				Summary: "new file",
+				Items: []shared.ChecklistItem{{
+					Label:  "ignore-scripts",
+					Value:  "true",
+					Status: shared.ChecklistStatusNew,
+					Detail: "Blocks dependency install scripts unless they are explicitly approved.",
+				}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render init: %v", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{
+		"Initialized /tmp/demo (pnpm)",
+		"Detecting package manager",
+		"Found pnpm via pnpm-lock.yaml",
+		"✓ lockfile = pnpm-lock.yaml present OK",
+		"Securing .npmrc",
+		"✓ ignore-scripts = true NEW",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in output, got %q", want, got)
+		}
+	}
+}
+
+func TestRenderBrandingHeaderShowsBannerSloganAndVersion(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	ui := NewTerminalUI(strings.NewReader(""), &out, false, true)
+
+	err := ui.RenderBrandingHeader(context.Background(), "v1.2.3")
+	if err != nil {
+		t.Fatalf("render branding header: %v", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{
+		shared.CeladorBranding.ASCIIArt[0],
+		shared.CeladorBranding.ASCIIArt[len(shared.CeladorBranding.ASCIIArt)-1],
+		shared.CeladorBranding.Slogan,
+		"Version: v1.2.3",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in output, got %q", want, got)
+		}
+	}
+	if !strings.HasPrefix(got, shared.CeladorBranding.ASCIIArt[0]) {
+		t.Fatalf("expected banner at start of output, got %q", got)
+	}
+}
+
 func TestRenderScanFormatsRuleFindingWithLocation(t *testing.T) {
 	t.Parallel()
 
@@ -288,10 +366,142 @@ func TestRenderFixPlanExplainsZeroPlanCategories(t *testing.T) {
 
 	got := out.String()
 	for _, want := range []string{
-		"Why no safe remediation was planned:",
-		"finding has no known fixed version (OSV-1 — package lodash)",
-		"finding requires manual changes (rule-1 — target src/app.tsx)",
-		"finding is outside the current remediation scope (OSV-2 — target lockfile-only)",
+		"Remediation analysis complete",
+		"Plan summary",
+		"✓ safe operations = 0 OK",
+		"Why nothing was planned",
+		"✓ no known fixed version = 1 finding INFO",
+		"Examples: OSV-1 — package lodash",
+		"✓ manual remediation required = 1 finding INFO",
+		"Examples: rule-1 — target src/app.tsx",
+		"✓ outside current remediation scope = 1 finding INFO",
+		"Examples: OSV-2 — target lockfile-only",
+		"Diff preview",
+		"✓ package.json diff = no changes INFO",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in output, got %q", want, got)
+		}
+	}
+}
+
+func TestRenderFixPlanShowsSectionedOperationsAndDiff(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	ui := NewTerminalUI(strings.NewReader(""), &out, false, true)
+
+	err := ui.RenderFixPlan(context.Background(), shared.FixPlan{
+		Summary: "Planned 2 conservative remediation operations",
+		Operations: []shared.FixOperation{
+			{File: "/tmp/demo/package.json", ManifestSection: "dependencies", PackageName: "lodash", CurrentVersion: "4.17.20", ProposedVersion: "4.17.21", Strategy: "bump", RequiresInstall: true},
+			{File: "/tmp/demo/package.json", PackageName: "minimist", ProposedVersion: "1.2.8", Strategy: "override", RequiresInstall: true},
+		},
+		DryRunDiff: "--- package.json\n+++ package.json\n@@ -1,3 +1,3 @@\n",
+	})
+	if err != nil {
+		t.Fatalf("render fix plan: %v", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{
+		"Remediation plan ready",
+		"Planned operations",
+		"✓ lodash = dependencies 4.17.20 -> 4.17.21 UPDATED",
+		"bump lodash in dependencies from 4.17.20 to 4.17.21",
+		"✓ minimist = override -> 1.2.8 NEW",
+		"override minimist to 1.2.8 in package.json",
+		"Follow-up: reinstall dependencies to refresh the lockfile.",
+		"Diff preview",
+		"--- package.json",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in output, got %q", want, got)
+		}
+	}
+}
+
+func TestRenderInstallAssessmentUsesSectionedPreflightReport(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	ui := NewTerminalUI(strings.NewReader(""), &out, false, true)
+
+	err := ui.RenderInstallAssessment(context.Background(), shared.InstallAssessment{
+		Package:       "left-pad",
+		Manager:       shared.PackageManagerPNPM,
+		Risk:          shared.SeverityHigh,
+		Unknown:       true,
+		ShouldPrompt:  true,
+		Reasons:       []string{"Package publishes install scripts", "Registry metadata could not be fully verified"},
+		SuggestedArgs: []string{"pnpm", "add", "--ignore-scripts", "left-pad"},
+	})
+	if err != nil {
+		t.Fatalf("render install assessment: %v", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{
+		"Install preflight",
+		"Assessment complete for left-pad before pnpm install. Approval is recommended before continuing.",
+		"Package summary",
+		"✓ package = left-pad OK",
+		"✓ package manager = pnpm OK",
+		"✓ risk = High INFO",
+		"✓ registry status = unknown INFO",
+		"Risk review",
+		"Celador recommends an explicit approval before package manager execution.",
+		"✓ Package publishes install scripts INFO",
+		"✓ Registry metadata could not be fully verified INFO",
+		"Suggested command",
+		"✓ command = pnpm add --ignore-scripts left-pad INFO",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in output, got %q", want, got)
+		}
+	}
+}
+
+func TestRenderInstallTimelineReportsRealExecutionStages(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	ui := NewTerminalUI(strings.NewReader(""), &out, false, true)
+
+	err := ui.RenderInstallTimeline(context.Background(), shared.InstallTimeline{
+		Assessment: shared.InstallAssessment{
+			Package:       "left-pad",
+			Manager:       shared.PackageManagerPNPM,
+			Risk:          shared.SeverityHigh,
+			ShouldPrompt:  true,
+			SuggestedArgs: []string{"pnpm", "add", "--ignore-scripts", "left-pad"},
+		},
+		RequestedArgs:  []string{"left-pad"},
+		Command:        []string{"pnpm", "install", "left-pad"},
+		Approval:       shared.InstallApprovalPromptApproved,
+		ExecutionState: shared.InstallExecutionSucceeded,
+	})
+	if err != nil {
+		t.Fatalf("render install timeline: %v", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{
+		"Install timeline",
+		"Execution finished for left-pad with pnpm.",
+		"1. Request and preflight",
+		"✓ requested packages = left-pad OK",
+		"✓ safer suggested command = pnpm add --ignore-scripts left-pad INFO",
+		"2. Approval decision",
+		"✓ approval status = granted interactively INFO",
+		"3. Package manager execution",
+		"✓ command = pnpm install left-pad UPDATED",
+		"State: completed",
+		"4. Security summary",
+		"✓ post-install security check = not run automatically INFO",
+		"Run `celador scan` to audit the updated lockfiles explicitly.",
+		"5. Final outcome",
+		"The install finished and approval was required and granted interactively before execution.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected %q in output, got %q", want, got)

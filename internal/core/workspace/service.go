@@ -19,6 +19,13 @@ import (
 type Result struct {
 	Workspace shared.Workspace
 	Messages  []string
+	Report    shared.InitReport
+}
+
+type initSnapshot struct {
+	ManagerConfigExists bool
+	ManagerSettings     map[string]string
+	NodeEngine          string
 }
 
 type Service struct {
@@ -42,6 +49,10 @@ func (s *Service) Run(ctx context.Context, root string, tty bool, ci bool, insta
 	}
 	if ws.PackageManager == shared.PackageManagerUnknown {
 		return Result{}, fmt.Errorf("unsupported workspace: no supported lockfile found")
+	}
+	before, err := s.captureInitSnapshot(ctx, ws)
+	if err != nil {
+		return Result{}, err
 	}
 
 	messages := []string{}
@@ -76,8 +87,250 @@ func (s *Service) Run(ctx context.Context, root string, tty bool, ci bool, insta
 		}
 		messages = append(messages, "installed pre-commit hook")
 	}
+	report, err := s.buildInitReport(ctx, ws, before)
+	if err != nil {
+		return Result{}, err
+	}
 
-	return Result{Workspace: ws, Messages: messages}, nil
+	return Result{Workspace: ws, Messages: messages, Report: report}, nil
+}
+
+func (s *Service) captureInitSnapshot(ctx context.Context, ws shared.Workspace) (initSnapshot, error) {
+	settingsPath := managerConfigPath(ws)
+	settings, exists, err := s.inspectManagerSettings(ctx, ws)
+	if err != nil {
+		return initSnapshot{}, fmt.Errorf("inspect %s: %w", settingsPath, err)
+	}
+	engine, err := s.inspectNodeEngine(ctx, ws.ManifestPath)
+	if err != nil {
+		return initSnapshot{}, err
+	}
+	return initSnapshot{ManagerConfigExists: exists, ManagerSettings: settings, NodeEngine: engine}, nil
+}
+
+func (s *Service) buildInitReport(ctx context.Context, ws shared.Workspace, before initSnapshot) (shared.InitReport, error) {
+	afterSettings, _, err := s.inspectManagerSettings(ctx, ws)
+	if err != nil {
+		return shared.InitReport{}, fmt.Errorf("inspect %s: %w", managerConfigPath(ws), err)
+	}
+	afterEngine, err := s.inspectNodeEngine(ctx, ws.ManifestPath)
+	if err != nil {
+		return shared.InitReport{}, err
+	}
+	sections := []shared.ChecklistSection{buildDetectionSection(ws)}
+	if section := buildManagerHardeningSection(ws, before, afterSettings); len(section.Items) > 0 {
+		sections = append(sections, section)
+	}
+	if section := buildManifestSection(ws, before.NodeEngine, afterEngine); len(section.Items) > 0 {
+		sections = append(sections, section)
+	}
+	return shared.InitReport{
+		Title:    fmt.Sprintf("Initialized %s (%s)", ws.Root, ws.PackageManager),
+		Subtitle: "Workspace hardening completed with conservative defaults.",
+		Sections: sections,
+	}, nil
+}
+
+func buildDetectionSection(ws shared.Workspace) shared.ChecklistSection {
+	source := "workspace hints"
+	if len(ws.Lockfiles) > 0 {
+		source = filepath.Base(ws.Lockfiles[0])
+	}
+	items := []shared.ChecklistItem{}
+	if len(ws.Lockfiles) > 0 {
+		items = append(items, shared.ChecklistItem{
+			Label:  "lockfile",
+			Value:  fmt.Sprintf("%s present", filepath.Base(ws.Lockfiles[0])),
+			Status: shared.ChecklistStatusUnchanged,
+			Detail: "Celador will use the root lockfile as the source of truth for dependency scanning.",
+		})
+	}
+	return shared.ChecklistSection{
+		Title:   "Detecting package manager",
+		Summary: fmt.Sprintf("Found %s via %s", ws.PackageManager, source),
+		Items:   items,
+	}
+}
+
+func buildManagerHardeningSection(ws shared.Workspace, before initSnapshot, after map[string]string) shared.ChecklistSection {
+	desired := desiredManagerSettings(ws.PackageManager)
+	items := make([]shared.ChecklistItem, 0, len(desired))
+	changed := false
+	for _, key := range sortedKeys(desired) {
+		want := desired[key]
+		status := shared.ChecklistStatusNew
+		if got := before.ManagerSettings[key]; got == want {
+			status = shared.ChecklistStatusUnchanged
+		} else if got != "" || before.ManagerConfigExists {
+			status = shared.ChecklistStatusUpdated
+		}
+		if after[key] == want && status != shared.ChecklistStatusUnchanged {
+			changed = true
+		}
+		items = append(items, shared.ChecklistItem{
+			Label:  key,
+			Value:  after[key],
+			Status: status,
+			Detail: managerSettingDetail(key, ws.PackageManager),
+		})
+	}
+	summary := "already hardened"
+	if !before.ManagerConfigExists {
+		summary = "new file"
+	} else if changed {
+		summary = "updated existing file"
+	}
+	return shared.ChecklistSection{
+		Title:   fmt.Sprintf("Securing %s", filepath.Base(managerConfigPath(ws))),
+		Summary: summary,
+		Items:   items,
+	}
+}
+
+func buildManifestSection(ws shared.Workspace, beforeEngine string, afterEngine string) shared.ChecklistSection {
+	if ws.ManifestPath == "" || strings.TrimSpace(afterEngine) == "" {
+		return shared.ChecklistSection{}
+	}
+	status := shared.ChecklistStatusNew
+	if beforeEngine == afterEngine {
+		status = shared.ChecklistStatusUnchanged
+	} else if strings.TrimSpace(beforeEngine) != "" {
+		status = shared.ChecklistStatusUpdated
+	}
+	return shared.ChecklistSection{
+		Title: "package.json",
+		Items: []shared.ChecklistItem{{
+			Label:  "engines.node",
+			Value:  afterEngine,
+			Status: status,
+			Detail: "Pins an exact Node.js runtime version so installs and builds stay deterministic.",
+		}},
+	}
+}
+
+func managerConfigPath(ws shared.Workspace) string {
+	switch ws.PackageManager {
+	case shared.PackageManagerBun:
+		return filepath.Join(ws.Root, "bunfig.toml")
+	case shared.PackageManagerDeno:
+		return filepath.Join(ws.Root, "deno.json")
+	default:
+		return filepath.Join(ws.Root, ".npmrc")
+	}
+}
+
+func desiredManagerSettings(manager shared.PackageManager) map[string]string {
+	switch manager {
+	case shared.PackageManagerBun:
+		return map[string]string{
+			"install.minimumReleaseAge": "1440",
+			"install.saveExact":         "true",
+		}
+	case shared.PackageManagerDeno:
+		return map[string]string{"lock": "true"}
+	default:
+		return map[string]string{
+			"ignore-scripts":      "true",
+			"minimum-release-age": "1440",
+			"save-exact":          "true",
+			"trust-policy":        "no-downgrade",
+		}
+	}
+}
+
+func managerSettingDetail(key string, manager shared.PackageManager) string {
+	switch key {
+	case "ignore-scripts":
+		return "Blocks dependency install scripts unless they are explicitly approved."
+	case "save-exact":
+		return "Pins exact dependency versions on install to avoid unexpected semver drift."
+	case "minimum-release-age", "install.minimumReleaseAge":
+		return "Delays very recent package releases to reduce exposure to fresh supply-chain compromises."
+	case "trust-policy":
+		return "Blocks packages when the publisher trust level has decreased compared with earlier releases."
+	case "install.saveExact":
+		return "Bun will save exact dependency versions instead of permissive ranges."
+	case "lock":
+		if manager == shared.PackageManagerDeno {
+			return "Ensures Deno installs are protected by a committed lockfile."
+		}
+	}
+	return "Conservative package-manager hardening is enabled for this workspace."
+}
+
+func (s *Service) inspectManagerSettings(ctx context.Context, ws shared.Workspace) (map[string]string, bool, error) {
+	path := managerConfigPath(ws)
+	exists, err := s.fs.Stat(ctx, path)
+	if err != nil {
+		return nil, false, err
+	}
+	if !exists {
+		return map[string]string{}, false, nil
+	}
+	body, err := s.fs.ReadFile(ctx, path)
+	if err != nil {
+		return nil, true, err
+	}
+	switch ws.PackageManager {
+	case shared.PackageManagerBun:
+		config := map[string]any{}
+		if len(body) > 0 {
+			if err := toml.Unmarshal(body, &config); err != nil {
+				return nil, true, err
+			}
+		}
+		settings := map[string]string{}
+		if install, ok := config["install"].(map[string]any); ok {
+			settings["install.saveExact"] = strings.TrimSpace(fmt.Sprint(install["saveExact"]))
+			settings["install.minimumReleaseAge"] = strings.TrimSpace(fmt.Sprint(install["minimumReleaseAge"]))
+		}
+		return settings, true, nil
+	case shared.PackageManagerDeno:
+		config := map[string]any{}
+		if len(body) > 0 {
+			if err := json.Unmarshal(body, &config); err != nil {
+				return nil, true, err
+			}
+		}
+		return map[string]string{"lock": strings.TrimSpace(fmt.Sprint(config["lock"]))}, true, nil
+	default:
+		settings := map[string]string{}
+		for _, line := range strings.Split(string(body), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") || !strings.Contains(trimmed, "=") {
+				continue
+			}
+			parts := strings.SplitN(trimmed, "=", 2)
+			settings[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
+		return settings, true, nil
+	}
+}
+
+func (s *Service) inspectNodeEngine(ctx context.Context, manifestPath string) (string, error) {
+	if strings.TrimSpace(manifestPath) == "" {
+		return "", nil
+	}
+	exists, err := s.fs.Stat(ctx, manifestPath)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return "", nil
+	}
+	body, err := s.fs.ReadFile(ctx, manifestPath)
+	if err != nil {
+		return "", err
+	}
+	pkg := map[string]any{}
+	if err := json.Unmarshal(body, &pkg); err != nil {
+		return "", fmt.Errorf("parse package.json: %w", err)
+	}
+	engines, ok := pkg["engines"].(map[string]any)
+	if !ok || engines == nil {
+		return "", nil
+	}
+	return strings.TrimSpace(fmt.Sprint(engines["node"])), nil
 }
 
 func (s *Service) ensureCeladorConfig(ctx context.Context, ws shared.Workspace) error {

@@ -10,6 +10,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
+	golang.org/x/mod v0.17.0
 	golang.org/x/term v0.30.0
 	gopkg.in/yaml.v3 v3.0.1
 )

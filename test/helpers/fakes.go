@@ -17,18 +17,38 @@ func (c StubClock) Now() time.Time { return c.Value }
 type StubUI struct {
 	ConfirmResult bool
 	ConfirmCalls  int
+	BrandingCalls int
+	LastPrompt    string
+	LastVersion   string
+	InitCalls     int
 	ScanCalls     int
 	OverviewCalls int
+	TimelineCalls int
+	LastInit      shared.InitReport
 	LastOverview  shared.Overview
 	LastScan      shared.ScanResult
 	LastScanOpts  shared.ScanRenderOptions
+	LastTimeline  shared.InstallTimeline
 	Interactive   bool
 	Output        strings.Builder
 }
 
-func (ui *StubUI) Confirm(context.Context, string) (bool, error) {
+func (ui *StubUI) Confirm(_ context.Context, prompt string) (bool, error) {
 	ui.ConfirmCalls++
+	ui.LastPrompt = prompt
 	return ui.ConfirmResult, nil
+}
+func (ui *StubUI) RenderBrandingHeader(_ context.Context, version string) error {
+	ui.BrandingCalls++
+	ui.LastVersion = version
+	ui.Output.WriteString(brandingHeaderForTest(version))
+	return nil
+}
+func (ui *StubUI) RenderInit(_ context.Context, report shared.InitReport) error {
+	ui.InitCalls++
+	ui.LastInit = report
+	ui.Output.WriteString(report.Title)
+	return nil
 }
 func (ui *StubUI) RenderScan(_ context.Context, result shared.ScanResult, options shared.ScanRenderOptions) error {
 	ui.ScanCalls++
@@ -43,6 +63,12 @@ func (ui *StubUI) RenderFixPlan(_ context.Context, plan shared.FixPlan) error {
 }
 func (ui *StubUI) RenderInstallAssessment(_ context.Context, assessment shared.InstallAssessment) error {
 	ui.Output.WriteString(assessment.Package)
+	return nil
+}
+func (ui *StubUI) RenderInstallTimeline(_ context.Context, timeline shared.InstallTimeline) error {
+	ui.TimelineCalls++
+	ui.LastTimeline = timeline
+	ui.Output.WriteString(strings.Join(timeline.Command, " "))
 	return nil
 }
 func (ui *StubUI) RenderOverview(_ context.Context, overview shared.Overview, interactive bool) error {
@@ -62,6 +88,13 @@ func (ui *StubUI) RenderOverview(_ context.Context, overview shared.Overview, in
 }
 func (ui *StubUI) Printf(format string, args ...any) {
 	_, _ = ui.Output.WriteString(fmt.Sprintf(format, args...))
+}
+
+func brandingHeaderForTest(version string) string {
+	if version == "" {
+		return "[branding]\n"
+	}
+	return fmt.Sprintf("[branding %s]\n", version)
 }
 
 type StubRuleLoader struct {
@@ -103,12 +136,13 @@ func (s *StubMetadata) InspectPackage(_ context.Context, manager shared.PackageM
 type StubPM struct {
 	Calls      [][]string
 	Workspaces []shared.Workspace
+	Err        error
 }
 
 func (pm *StubPM) Install(_ context.Context, workspace shared.Workspace, args []string) error {
 	pm.Calls = append(pm.Calls, args)
 	pm.Workspaces = append(pm.Workspaces, workspace)
-	return nil
+	return pm.Err
 }
 
 type StubDetector struct{ Workspace shared.Workspace }

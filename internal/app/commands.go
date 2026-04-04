@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	installcore "github.com/GustavoGutierrez/celador/internal/core/install"
 	"github.com/GustavoGutierrez/celador/internal/core/shared"
 	"github.com/spf13/cobra"
 )
@@ -55,6 +56,20 @@ func runVersionCommand(cmd *cobra.Command, rt *Runtime) error {
 	return nil
 }
 
+func renderBrandingHeader(ctx context.Context, rt *Runtime) error {
+	if rt == nil || rt.UI == nil {
+		return nil
+	}
+	return rt.UI.RenderBrandingHeader(ctx, runtimeVersion(rt))
+}
+
+func runtimeVersion(rt *Runtime) string {
+	if rt != nil && rt.VersionSv != nil {
+		return rt.VersionSv.Current()
+	}
+	return currentVersion()
+}
+
 func newInitCommand(rt *Runtime) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -72,11 +87,10 @@ func newInitCommand(rt *Runtime) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			rt.UI.Printf("Initialized %s (%s)\n", res.Workspace.Root, res.Workspace.PackageManager)
-			for _, msg := range res.Messages {
-				rt.UI.Printf("- %s\n", msg)
+			if err := renderBrandingHeader(cmd.Context(), rt); err != nil {
+				return err
 			}
-			return nil
+			return rt.UI.RenderInit(cmd.Context(), res.Report)
 		},
 	}
 	cmd.Flags().Bool("install-hook", false, "Install a pre-commit hook without prompting")
@@ -111,6 +125,11 @@ func newScanCommand(rt *Runtime) *cobra.Command {
 			if jsonOutput {
 				renderOptions.Format = shared.ScanRenderFormatJSON
 			}
+			if !jsonOutput {
+				if err := renderBrandingHeader(cmd.Context(), rt); err != nil {
+					return err
+				}
+			}
 			if err := rt.UI.RenderScan(cmd.Context(), result, renderOptions); err != nil {
 				return err
 			}
@@ -142,6 +161,9 @@ func newFixCommand(rt *Runtime) *cobra.Command {
 			diffOnly, _ := cmd.Flags().GetBool("diff")
 			plan, err := rt.FixSvc.Plan(cmd.Context(), rt.Root, tty, ci)
 			if err != nil {
+				return err
+			}
+			if err := renderBrandingHeader(cmd.Context(), rt); err != nil {
 				return err
 			}
 			if err := rt.UI.RenderFixPlan(cmd.Context(), plan); err != nil {
@@ -190,26 +212,64 @@ func newInstallCommand(rt *Runtime) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := renderBrandingHeader(cmd.Context(), rt); err != nil {
+				return err
+			}
 			if err := rt.UI.RenderInstallAssessment(cmd.Context(), assessment); err != nil {
 				return err
 			}
+			approval := shared.InstallApprovalNotNeeded
 			if assessment.ShouldPrompt && !yes {
 				if !tty || ci || noInteractive {
 					return NewExitError(2, "install risk requires approval; rerun with --yes or in a TTY")
 				}
-				confirmed, err := rt.UI.Confirm(cmd.Context(), fmt.Sprintf("Continue installing %s?", assessment.Package))
+				confirmed, err := rt.UI.Confirm(cmd.Context(), fmt.Sprintf("Proceed with installing %s after reviewing the preflight warnings?", assessment.Package))
 				if err != nil {
 					return err
 				}
 				if !confirmed {
 					return NewExitError(2, "installation cancelled")
 				}
+				approval = shared.InstallApprovalPromptApproved
+			} else if assessment.ShouldPrompt && yes {
+				approval = shared.InstallApprovalAutoApproved
 			}
-			return rt.InstallSv.Execute(cmd.Context(), rt.Root, tty, ci, args)
+			command, err := buildInstallTimelineCommand(assessment.Manager, args)
+			if err != nil {
+				return err
+			}
+			timeline := shared.InstallTimeline{
+				Assessment:     assessment,
+				RequestedArgs:  append([]string(nil), args...),
+				Command:        command,
+				Approval:       approval,
+				ExecutionState: shared.InstallExecutionRunning,
+			}
+			if err := rt.UI.RenderInstallTimeline(cmd.Context(), timeline); err != nil {
+				return err
+			}
+			if err := rt.InstallSv.Execute(cmd.Context(), rt.Root, tty, ci, args); err != nil {
+				timeline.ExecutionState = shared.InstallExecutionFailed
+				timeline.Failure = err.Error()
+				if renderErr := rt.UI.RenderInstallTimeline(cmd.Context(), timeline); renderErr != nil {
+					return renderErr
+				}
+				return err
+			}
+			timeline.ExecutionState = shared.InstallExecutionSucceeded
+			return rt.UI.RenderInstallTimeline(cmd.Context(), timeline)
 		},
 	}
 	cmd.Flags().Bool("yes", false, "Continue on risky findings without prompting")
 	return cmd
+}
+
+func buildInstallTimelineCommand(manager shared.PackageManager, args []string) ([]string, error) {
+	binary, cmdArgs, err := installcore.CommandForManager(manager, args)
+	if err != nil {
+		return nil, err
+	}
+	return append([]string{binary}, cmdArgs...), nil
 }
 
 func newAboutCommand(rt *Runtime) *cobra.Command {

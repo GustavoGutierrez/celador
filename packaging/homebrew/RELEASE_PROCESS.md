@@ -16,6 +16,12 @@ dedicated tap repository `GustavoGutierrez/homebrew-celador`.
 
 ## Release trigger
 
+Celador releases always follow Semantic Versioning.
+
+- Use `PATCH` for backward-compatible fixes, docs, packaging, and release-process changes.
+- Use `MINOR` for backward-compatible features and user-visible CLI improvements.
+- Use `MAJOR` for breaking CLI, config, or workflow changes.
+
 Preferred trigger:
 
 ```bash
@@ -136,9 +142,11 @@ Confirm that `HOMEBREW_TAP_SSH_KEY` exists and matches a write-enabled deploy ke
 
 ## Release checklist
 
+- [ ] Determine the next Semantic Version based on unreleased changes
 - [ ] Run `go test ./...`
 - [ ] Run `go run github.com/goreleaser/goreleaser/v2@v2.8.2 check --config .goreleaser.yaml`
 - [ ] Run `ruby -c packaging/homebrew/Formula/celador.rb`
+- [ ] Create a release commit if local changes are not yet committed
 - [ ] Ensure `GustavoGutierrez/homebrew-celador` exists
 - [ ] Ensure `HOMEBREW_TAP_SSH_KEY` is configured
 - [ ] Push the release tag `vX.Y.Z`

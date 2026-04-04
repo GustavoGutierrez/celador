@@ -76,12 +76,16 @@ func (p *PNPMParser) Parse(ctx context.Context, workspace shared.Workspace, path
 	deps := []shared.Dependency{}
 	for key := range lock.Packages {
 		trimmed := strings.TrimPrefix(key, "/")
-		parts := strings.Split(trimmed, "@")
-		if len(parts) < 2 {
+		base := trimmed
+		if idx := strings.Index(base, "("); idx >= 0 {
+			base = base[:idx]
+		}
+		versionSep := strings.LastIndex(base, "@")
+		if versionSep <= 0 || versionSep == len(base)-1 {
 			continue
 		}
-		version := parts[len(parts)-1]
-		name := strings.TrimSuffix(trimmed, "@"+version)
+		name := base[:versionSep]
+		version := base[versionSep+1:]
 		deps = append(deps, shared.Dependency{Name: name, Version: version, Ecosystem: "npm", Manifest: workspace.ManifestPath})
 	}
 	sortDeps(deps)

@@ -131,6 +131,34 @@ type FixPlan struct {
 	Reasons    []FixPlanReason
 }
 
+type ChecklistStatus string
+
+const (
+	ChecklistStatusInfo      ChecklistStatus = "info"
+	ChecklistStatusNew       ChecklistStatus = "new"
+	ChecklistStatusUpdated   ChecklistStatus = "updated"
+	ChecklistStatusUnchanged ChecklistStatus = "unchanged"
+)
+
+type ChecklistItem struct {
+	Label  string
+	Value  string
+	Status ChecklistStatus
+	Detail string
+}
+
+type ChecklistSection struct {
+	Title   string
+	Summary string
+	Items   []ChecklistItem
+}
+
+type InitReport struct {
+	Title    string
+	Subtitle string
+	Sections []ChecklistSection
+}
+
 type RulePack struct {
 	Version string       `yaml:"version"`
 	Rules   []RuleConfig `yaml:"rules"`
@@ -157,6 +185,34 @@ type InstallAssessment struct {
 	Manager       PackageManager
 	ShouldPrompt  bool
 	SuggestedArgs []string
+}
+
+type InstallApproval string
+
+const (
+	InstallApprovalNotNeeded          InstallApproval = "not-needed"
+	InstallApprovalAutoApproved       InstallApproval = "auto-approved"
+	InstallApprovalPromptApproved     InstallApproval = "prompt-approved"
+	InstallApprovalPendingInteractive InstallApproval = "pending-interactive"
+)
+
+type InstallExecutionState string
+
+const (
+	InstallExecutionPending   InstallExecutionState = "pending"
+	InstallExecutionRunning   InstallExecutionState = "running"
+	InstallExecutionSucceeded InstallExecutionState = "succeeded"
+	InstallExecutionFailed    InstallExecutionState = "failed"
+)
+
+type InstallTimeline struct {
+	Assessment      InstallAssessment
+	RequestedArgs   []string
+	Command         []string
+	Approval        InstallApproval
+	ExecutionState  InstallExecutionState
+	PostInstallScan bool
+	Failure         string
 }
 
 type Overview struct {

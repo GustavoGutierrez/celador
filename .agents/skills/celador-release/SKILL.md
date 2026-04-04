@@ -40,6 +40,34 @@ description: Publish a Celador GitHub release with GoReleaser assets and dedicat
   - `MINOR` for backward-compatible features.
   - `MAJOR` for breaking CLI, config, or workflow changes.
 
+### Automatic version deduction when the user says "publish a new release"
+
+When the user asks to publish a new release without specifying a version, inspect the unreleased changes and
+choose the next version automatically:
+
+- Bump `PATCH` for backward-compatible fixes, docs, packaging, release automation, and maintenance updates.
+- Bump `MINOR` for backward-compatible user-facing features, new command capabilities, richer CLI flows, or
+  notable UX additions.
+- Bump `MAJOR` only for breaking CLI, config, workflow, or compatibility changes.
+
+Always explain the chosen bump briefly before tagging.
+
+## Full operator flow for "publish a new release"
+
+When the user says some variation of "publish a new release", execute this full flow end to end unless the
+user explicitly narrows the scope:
+
+1. Review the working tree and unreleased changes.
+2. Deduce the next Semantic Version if the user did not provide one.
+3. Run local release validation.
+4. Create a release commit if there are uncommitted changes and the user asked to publish.
+5. Create the release tag `vX.Y.Z`.
+6. Push the commit and tag.
+7. Let `.github/workflows/release.yml` publish GitHub assets and update the dedicated Homebrew tap.
+8. Verify the GitHub release assets.
+9. Verify the Homebrew tap publication.
+10. Report the final release URL, tag, and verification outcome.
+
 ## Standard publish flow
 
 1. Validate the repository locally before tagging:
@@ -57,14 +85,16 @@ description: Publish a Celador GitHub release with GoReleaser assets and dedicat
    - That secret must be the private half of a write-enabled deploy key registered on
      `GustavoGutierrez/homebrew-celador`
 
-3. Create and push the release tag:
+3. If the release includes local changes that are not yet committed, create a normal git commit first.
+
+4. Create and push the release tag:
 
    ```bash
    git tag vX.Y.Z
    git push origin vX.Y.Z
    ```
 
-4. Let GitHub Actions run `.github/workflows/release.yml`.
+5. Let GitHub Actions run `.github/workflows/release.yml`.
 
 ## What the workflow does
 

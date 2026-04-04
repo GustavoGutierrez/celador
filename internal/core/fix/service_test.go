@@ -93,6 +93,21 @@ func TestPlanExplainsWhyNoSafeRemediationWasPlanned(t *testing.T) {
 	assertReasonCount(t, plan.Reasons, shared.FixPlanReasonOutsideScope, 1)
 }
 
+func TestDedupeOperationsUsesSemverAwareComparison(t *testing.T) {
+	t.Parallel()
+
+	ops := dedupeOperations([]shared.FixOperation{
+		{PackageName: "lodash", ProposedVersion: "4.9.0"},
+		{PackageName: "lodash", ProposedVersion: "4.18.0"},
+	})
+	if len(ops) != 1 {
+		t.Fatalf("expected one deduplicated operation, got %d", len(ops))
+	}
+	if ops[0].ProposedVersion != "4.18.0" {
+		t.Fatalf("expected highest semver fix, got %q", ops[0].ProposedVersion)
+	}
+}
+
 func assertReasonCount(t *testing.T, reasons []shared.FixPlanReason, category shared.FixPlanReasonCategory, want int) {
 	t.Helper()
 	for _, reason := range reasons {
