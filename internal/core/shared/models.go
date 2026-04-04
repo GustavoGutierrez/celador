@@ -86,6 +86,18 @@ type ScanResult struct {
 	GeneratedAt     time.Time
 }
 
+type ScanRenderFormat string
+
+const (
+	ScanRenderFormatText ScanRenderFormat = "text"
+	ScanRenderFormatJSON ScanRenderFormat = "json"
+)
+
+type ScanRenderOptions struct {
+	Format  ScanRenderFormat
+	Verbose bool
+}
+
 type FixOperation struct {
 	File            string
 	ManifestSection string

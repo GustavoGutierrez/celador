@@ -6,7 +6,28 @@ import (
 	"strings"
 )
 
+type RenderedFindingGroup struct {
+	Severity Severity
+	Lines    []string
+}
+
+var renderedSeverityOrder = []Severity{
+	SeverityCritical,
+	SeverityHigh,
+	SeverityMedium,
+	SeverityLow,
+}
+
 func RenderedFindingLines(findings []Finding) []string {
+	groups := RenderedFindingGroups(findings)
+	lines := make([]string, 0, len(findings))
+	for _, group := range groups {
+		lines = append(lines, group.Lines...)
+	}
+	return lines
+}
+
+func RenderedFindingGroups(findings []Finding) []RenderedFindingGroup {
 	type findingGroup struct {
 		severity Severity
 		base     string
@@ -28,24 +49,51 @@ func RenderedFindingLines(findings []Finding) []string {
 		group.items = append(group.items, finding)
 	}
 
-	lines := make([]string, 0, len(order))
+	groupedLines := make(map[Severity][]string, len(renderedSeverityOrder))
+	seenSeverity := make(map[Severity]struct{}, len(renderedSeverityOrder))
+	severityOrder := make([]Severity, 0, len(renderedSeverityOrder))
 	for _, key := range order {
 		group := groups[key]
+		if _, ok := seenSeverity[group.severity]; !ok {
+			seenSeverity[group.severity] = struct{}{}
+			severityOrder = append(severityOrder, group.severity)
+		}
 		if len(group.items) == 1 {
-			lines = append(lines, formatRenderedFinding(group.severity, group.base))
+			groupedLines[group.severity] = append(groupedLines[group.severity], formatRenderedFinding(group.severity, group.base))
 			continue
 		}
 
 		detailed := uniqueDetailedFindingLines(group.severity, group.items)
 		if len(detailed) > 1 {
-			lines = append(lines, detailed...)
+			groupedLines[group.severity] = append(groupedLines[group.severity], detailed...)
 			continue
 		}
 
-		lines = append(lines, formatRenderedFinding(group.severity, group.base))
+		groupedLines[group.severity] = append(groupedLines[group.severity], formatRenderedFinding(group.severity, group.base))
 	}
 
-	return lines
+	renderedGroups := make([]RenderedFindingGroup, 0, len(groupedLines))
+	added := make(map[Severity]struct{}, len(groupedLines))
+	for _, severity := range renderedSeverityOrder {
+		lines := groupedLines[severity]
+		if len(lines) == 0 {
+			continue
+		}
+		added[severity] = struct{}{}
+		renderedGroups = append(renderedGroups, RenderedFindingGroup{Severity: severity, Lines: lines})
+	}
+	for _, severity := range severityOrder {
+		if _, ok := added[severity]; ok {
+			continue
+		}
+		lines := groupedLines[severity]
+		if len(lines) == 0 {
+			continue
+		}
+		renderedGroups = append(renderedGroups, RenderedFindingGroup{Severity: severity, Lines: lines})
+	}
+
+	return renderedGroups
 }
 
 func RenderedFindingCount(findings []Finding) int {

@@ -103,11 +103,11 @@ func (c *Client) Query(ctx context.Context, deps []shared.Dependency) ([]shared.
 
 func summarizeVulnerability(summary string, details string, packageName string) string {
 	summary = strings.TrimSpace(summary)
-	if summary != "" {
+	details = firstAdvisorySentence(details)
+	if summary != "" && !(details != "" && isGenericVulnerabilitySummary(summary, packageName)) {
 		return summary
 	}
 
-	details = compactWhitespace(details)
 	if details != "" {
 		return details
 	}
@@ -122,4 +122,48 @@ func summarizeVulnerability(summary string, details string, packageName string) 
 
 func compactWhitespace(value string) string {
 	return strings.Join(strings.Fields(value), " ")
+}
+
+func firstAdvisorySentence(value string) string {
+	value = compactWhitespace(value)
+	if value == "" {
+		return ""
+	}
+
+	for _, separator := range []string{". ", "! ", "? "} {
+		if idx := strings.Index(value, separator); idx >= 0 {
+			return strings.TrimSpace(value[:idx+1])
+		}
+	}
+
+	return value
+}
+
+func isGenericVulnerabilitySummary(summary string, packageName string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(summary))
+	if normalized == "" {
+		return true
+	}
+
+	packageName = strings.ToLower(strings.TrimSpace(packageName))
+	generic := []string{
+		"vulnerability detected",
+		"security vulnerability",
+		"known vulnerability",
+	}
+	if packageName != "" {
+		generic = append(generic,
+			fmt.Sprintf("vulnerability detected in %s", packageName),
+			fmt.Sprintf("vulnerability in %s", packageName),
+			fmt.Sprintf("security vulnerability in %s", packageName),
+		)
+	}
+
+	for _, candidate := range generic {
+		if normalized == candidate {
+			return true
+		}
+	}
+
+	return false
 }

@@ -106,8 +106,15 @@ Audit supported lockfiles and active framework rules.
 
 ```bash
 celador scan
+celador scan --json
+celador scan --verbose
 celador --no-interactive scan
 ```
+
+Flags:
+
+- `--json` — render structured JSON output for tooling while preserving the usual scan exit codes
+- `--verbose` — render extra scan metadata in text mode
 
 Behavior:
 
@@ -116,7 +123,8 @@ Behavior:
 - loads ignore rules from `.celadorignore`
 - loads built-in YAML rule packs from `configs/rules`
 - queries OSV.dev with cache reuse and offline fallback behavior
-- renders plain-text findings
+- renders grouped plain-text findings by severity in default mode
+- can render structured JSON for CI integrations and custom tooling
 
 Exit behavior:
 
@@ -128,7 +136,10 @@ Output behavior:
 
 - prints a scan fingerprint
 - prints the finding count and ignored finding count
-- prints one line per finding with the finding ID, package or target context, summary text, and fix version when available
+- groups default text output by severity for easier review
+- prints one line per finding with the finding ID, package or target context, richer advisory text when available, and `fixed in` details when known
+- in `--verbose` mode, also prints dependency count, package manager, and active rule-pack version
+- in `--json` mode, includes fingerprint, cache flags, workspace metadata, rendered and raw finding counts, and detailed finding records
 - prints `Result source: cache` when OSV data came from cache
 - prints `Mode: offline fallback` when a stale cached result is used because OSV could not be reached
 

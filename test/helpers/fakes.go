@@ -17,8 +17,11 @@ func (c StubClock) Now() time.Time { return c.Value }
 type StubUI struct {
 	ConfirmResult bool
 	ConfirmCalls  int
+	ScanCalls     int
 	OverviewCalls int
 	LastOverview  shared.Overview
+	LastScan      shared.ScanResult
+	LastScanOpts  shared.ScanRenderOptions
 	Interactive   bool
 	Output        strings.Builder
 }
@@ -27,7 +30,10 @@ func (ui *StubUI) Confirm(context.Context, string) (bool, error) {
 	ui.ConfirmCalls++
 	return ui.ConfirmResult, nil
 }
-func (ui *StubUI) RenderScan(_ context.Context, result shared.ScanResult) error {
+func (ui *StubUI) RenderScan(_ context.Context, result shared.ScanResult, options shared.ScanRenderOptions) error {
+	ui.ScanCalls++
+	ui.LastScan = result
+	ui.LastScanOpts = options
 	ui.Output.WriteString(result.Fingerprint)
 	return nil
 }

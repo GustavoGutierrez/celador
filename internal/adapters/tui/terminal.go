@@ -3,6 +3,7 @@ package tui
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -41,25 +42,164 @@ func (ui *TerminalUI) Confirm(_ context.Context, prompt string) (bool, error) {
 	return answer == "y" || answer == "yes", nil
 }
 
-func (ui *TerminalUI) RenderScan(_ context.Context, result shared.ScanResult) error {
-	renderedFindings := shared.RenderedFindingLines(result.Findings)
+func (ui *TerminalUI) RenderScan(_ context.Context, result shared.ScanResult, options shared.ScanRenderOptions) error {
+	if options.Format == shared.ScanRenderFormatJSON {
+		return ui.renderScanJSON(result)
+	}
+	return ui.renderScanText(result, options)
+}
 
-	_, err := fmt.Fprintf(ui.out, "Scan fingerprint: %s\nFindings: %d (ignored: %d)\n", result.Fingerprint, len(renderedFindings), result.IgnoredCount)
-	if err != nil {
+func (ui *TerminalUI) renderScanText(result shared.ScanResult, options shared.ScanRenderOptions) error {
+	renderedCount := shared.RenderedFindingCount(result.Findings)
+	if _, err := fmt.Fprintf(ui.out, "Scan fingerprint: %s\nFindings: %d (ignored: %d)\n", result.Fingerprint, renderedCount, result.IgnoredCount); err != nil {
 		return err
 	}
-	for _, line := range renderedFindings {
-		if _, err := fmt.Fprintf(ui.out, "- %s\n", line); err != nil {
+	if options.Verbose {
+		if _, err := fmt.Fprintf(ui.out, "Dependencies scanned: %d\nPackage manager: %s\n", len(result.Dependencies), result.Workspace.PackageManager); err != nil {
+			return err
+		}
+		if result.RuleVersion != "" {
+			if _, err := fmt.Fprintf(ui.out, "Rule pack: %s\n", result.RuleVersion); err != nil {
+				return err
+			}
+		}
+	}
+
+	groups := shared.RenderedFindingGroups(result.Findings)
+	if len(groups) == 0 {
+		if _, err := fmt.Fprintln(ui.out, "Status: no actionable findings"); err != nil {
+			return err
+		}
+	} else {
+		if _, err := fmt.Fprintln(ui.out); err != nil {
+			return err
+		}
+		for index, group := range groups {
+			if _, err := fmt.Fprintf(ui.out, "%s findings:\n", formatSeverityHeading(group.Severity)); err != nil {
+				return err
+			}
+			for _, line := range group.Lines {
+				if _, err := fmt.Fprintf(ui.out, "- %s\n", line); err != nil {
+					return err
+				}
+			}
+			if options.Verbose && index < len(groups)-1 {
+				if _, err := fmt.Fprintln(ui.out); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	if result.FromCache {
+		if _, err := fmt.Fprintln(ui.out, "Result source: cache"); err != nil {
 			return err
 		}
 	}
-	if result.FromCache {
-		_, err = fmt.Fprintln(ui.out, "Result source: cache")
-	}
 	if result.OfflineFallback {
-		_, err = fmt.Fprintln(ui.out, "Mode: offline fallback")
+		if _, err := fmt.Fprintln(ui.out, "Mode: offline fallback"); err != nil {
+			return err
+		}
 	}
-	return err
+	return nil
+}
+
+func (ui *TerminalUI) renderScanJSON(result shared.ScanResult) error {
+	type jsonCache struct {
+		FromCache       bool `json:"from_cache"`
+		OfflineFallback bool `json:"offline_fallback"`
+	}
+	type jsonWorkspace struct {
+		Root           string                `json:"root,omitempty"`
+		PackageManager shared.PackageManager `json:"package_manager"`
+		Lockfiles      []string              `json:"lockfiles,omitempty"`
+	}
+	type jsonFinding struct {
+		ID          string                   `json:"id"`
+		Source      shared.FindingSource     `json:"source"`
+		Severity    shared.Severity          `json:"severity"`
+		PackageName string                   `json:"package_name,omitempty"`
+		Target      string                   `json:"target,omitempty"`
+		Summary     string                   `json:"summary"`
+		Fixable     bool                     `json:"fixable"`
+		FixVersion  string                   `json:"fix_version,omitempty"`
+		Locations   []shared.FindingLocation `json:"locations,omitempty"`
+		Rendered    string                   `json:"rendered"`
+	}
+	payload := struct {
+		Fingerprint          string        `json:"fingerprint"`
+		RenderedFindingCount int           `json:"rendered_finding_count"`
+		RawFindingCount      int           `json:"raw_finding_count"`
+		IgnoredCount         int           `json:"ignored_count"`
+		DependencyCount      int           `json:"dependency_count"`
+		RuleVersion          string        `json:"rule_version,omitempty"`
+		GeneratedAt          string        `json:"generated_at,omitempty"`
+		Cache                jsonCache     `json:"cache"`
+		Workspace            jsonWorkspace `json:"workspace"`
+		Findings             []jsonFinding `json:"findings"`
+	}{
+		Fingerprint:          result.Fingerprint,
+		RenderedFindingCount: shared.RenderedFindingCount(result.Findings),
+		RawFindingCount:      len(result.Findings),
+		IgnoredCount:         result.IgnoredCount,
+		DependencyCount:      len(result.Dependencies),
+		RuleVersion:          result.RuleVersion,
+		Cache: jsonCache{
+			FromCache:       result.FromCache,
+			OfflineFallback: result.OfflineFallback,
+		},
+		Workspace: jsonWorkspace{
+			Root:           result.Workspace.Root,
+			PackageManager: result.Workspace.PackageManager,
+			Lockfiles:      result.Workspace.Lockfiles,
+		},
+		Findings: make([]jsonFinding, 0, len(result.Findings)),
+	}
+	if !result.GeneratedAt.IsZero() {
+		payload.GeneratedAt = result.GeneratedAt.UTC().Format("2006-01-02T15:04:05Z")
+	}
+	for _, finding := range result.Findings {
+		payload.Findings = append(payload.Findings, jsonFinding{
+			ID:          finding.ID,
+			Source:      finding.Source,
+			Severity:    finding.Severity,
+			PackageName: finding.PackageName,
+			Target:      finding.Target,
+			Summary:     renderedFindingSummary(finding),
+			Fixable:     finding.Fixable,
+			FixVersion:  finding.FixVersion,
+			Locations:   finding.Locations,
+			Rendered:    renderFindingLine(finding),
+		})
+	}
+
+	encoder := json.NewEncoder(ui.out)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(payload)
+}
+
+func renderedFindingSummary(finding shared.Finding) string {
+	summary := strings.TrimSpace(finding.Summary)
+	if summary != "" {
+		return summary
+	}
+	return strings.TrimSpace(renderFindingLine(finding))
+}
+
+func renderFindingLine(finding shared.Finding) string {
+	lines := shared.RenderedFindingLines([]shared.Finding{finding})
+	if len(lines) == 0 {
+		return ""
+	}
+	return lines[0]
+}
+
+func formatSeverityHeading(severity shared.Severity) string {
+	text := string(severity)
+	if text == "" {
+		return "Unspecified"
+	}
+	return strings.ToUpper(text[:1]) + text[1:]
 }
 
 func (ui *TerminalUI) RenderFixPlan(_ context.Context, plan shared.FixPlan) error {

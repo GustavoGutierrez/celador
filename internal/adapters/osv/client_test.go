@@ -51,3 +51,29 @@ func TestClientQueryFallsBackToDetailsWhenSummaryIsBlank(t *testing.T) {
 		t.Fatalf("expected fix version, got %q", findings[0].FixVersion)
 	}
 }
+
+func TestSummarizeVulnerabilityPrefersDetailsWhenSummaryIsGeneric(t *testing.T) {
+	t.Parallel()
+
+	got := summarizeVulnerability(
+		"Vulnerability in lodash",
+		"Prototype pollution in lodash allows crafted input to modify object prototypes. Additional metadata follows.",
+		"lodash",
+	)
+	if got != "Prototype pollution in lodash allows crafted input to modify object prototypes." {
+		t.Fatalf("expected detailed advisory sentence, got %q", got)
+	}
+}
+
+func TestSummarizeVulnerabilityKeepsSpecificSummary(t *testing.T) {
+	t.Parallel()
+
+	got := summarizeVulnerability(
+		"Prototype pollution in lodash merge helper",
+		"Prototype pollution in lodash allows crafted input to modify object prototypes.",
+		"lodash",
+	)
+	if got != "Prototype pollution in lodash merge helper" {
+		t.Fatalf("expected specific summary to win, got %q", got)
+	}
+}

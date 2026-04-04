@@ -91,6 +91,14 @@ func newScanCommand(rt *Runtime) *cobra.Command {
 			if len(args) != 0 {
 				return NewExitError(2, "scan does not accept positional arguments")
 			}
+			jsonOutput, err := cmd.Flags().GetBool("json")
+			if err != nil {
+				return err
+			}
+			verbose, err := cmd.Flags().GetBool("verbose")
+			if err != nil {
+				return err
+			}
 			tty, ci, _, err := commandInteractivity(cmd, rt)
 			if err != nil {
 				return err
@@ -99,7 +107,11 @@ func newScanCommand(rt *Runtime) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := rt.UI.RenderScan(cmd.Context(), result); err != nil {
+			renderOptions := shared.ScanRenderOptions{Format: shared.ScanRenderFormatText, Verbose: verbose}
+			if jsonOutput {
+				renderOptions.Format = shared.ScanRenderFormatJSON
+			}
+			if err := rt.UI.RenderScan(cmd.Context(), result, renderOptions); err != nil {
 				return err
 			}
 			renderedFindingCount := shared.RenderedFindingCount(result.Findings)
@@ -109,6 +121,8 @@ func newScanCommand(rt *Runtime) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().Bool("json", false, "Render structured JSON scan output")
+	cmd.Flags().Bool("verbose", false, "Render additional scan context in text output")
 	return cmd
 }
 

@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -107,8 +108,97 @@ func TestScanCommandUsesRenderedFindingCountInExitMessage(t *testing.T) {
 	if !strings.Contains(got, "Findings: 1 (ignored: 0)") {
 		t.Fatalf("expected rendered header to use the same finding count, got %q", got)
 	}
+	if !strings.Contains(got, "High findings:") {
+		t.Fatalf("expected grouped scan output, got %q", got)
+	}
 	if strings.Count(got, "GHSA-abcd-1234") != 1 {
 		t.Fatalf("expected a single rendered finding, got %q", got)
+	}
+}
+
+func TestScanCommandJSONFlagRendersStructuredOutput(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fs := fsadapter.NewOSFileSystem(root)
+	mustWriteAppFile(t, fs, filepath.Join(root, "package.json"), `{"engines":{"node":"20.0.0"},"dependencies":{"lodash":"4.17.20"}}`)
+	mustWriteAppFile(t, fs, filepath.Join(root, "package-lock.json"), `{"packages":{"node_modules/lodash":{"version":"4.17.20"}}}`)
+
+	var out bytes.Buffer
+	ui := uiadapter.NewTerminalUI(strings.NewReader(""), &out, false, true)
+	finding := shared.Finding{ID: "GHSA-abcd-1234", Source: shared.FindingSourceOSV, Severity: shared.SeverityHigh, PackageName: "lodash", Target: "lodash", Summary: "Prototype pollution in merge helper", FixVersion: "4.17.21", Fixable: true}
+	scanSvc := audit.NewService(
+		helpers.StubDetector{Workspace: shared.Workspace{Root: root, PackageManager: shared.PackageManagerNPM, Lockfiles: []string{filepath.Join(root, "package-lock.json")}, ManifestPath: filepath.Join(root, "package.json")}},
+		helpers.StubIgnore{},
+		helpers.StubRuleLoader{Version: "v1"},
+		helpers.StubRuleEvaluator{},
+		&helpers.StubOSV{Findings: []shared.Finding{finding, finding}},
+		&helpers.StubCache{},
+		helpers.StubClock{Value: time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)},
+		24*time.Hour,
+		[]ports.LockfileParser{audit.NewNPMParser(fs)},
+	)
+	rt := &Runtime{Root: root, TTY: false, CI: true, FS: fs, UI: ui, ScanSvc: scanSvc}
+	cmd := newRootCommand(rt)
+	cmd.SetArgs([]string{"scan", "--json"})
+
+	err := cmd.ExecuteContext(context.Background())
+	assertExitCode(t, err, 3)
+	if err.Error() != "1 findings detected" {
+		t.Fatalf("expected deduplicated exit message, got %q", err.Error())
+	}
+
+	var payload struct {
+		RenderedFindingCount int `json:"rendered_finding_count"`
+		RawFindingCount      int `json:"raw_finding_count"`
+		Findings             []struct {
+			ID         string `json:"id"`
+			FixVersion string `json:"fix_version"`
+		} `json:"findings"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal scan json: %v\n%s", err, out.String())
+	}
+	if payload.RenderedFindingCount != 1 || payload.RawFindingCount != 2 {
+		t.Fatalf("unexpected rendered/raw counts: %+v", payload)
+	}
+	if len(payload.Findings) != 2 || payload.Findings[0].ID != "GHSA-abcd-1234" || payload.Findings[0].FixVersion != "4.17.21" {
+		t.Fatalf("unexpected findings payload: %+v", payload.Findings)
+	}
+}
+
+func TestScanCommandVerboseFlagPassesVerboseRenderOption(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fs := fsadapter.NewOSFileSystem(root)
+	mustWriteAppFile(t, fs, filepath.Join(root, "package.json"), `{"engines":{"node":"20.0.0"},"dependencies":{"lodash":"4.17.20"}}`)
+	mustWriteAppFile(t, fs, filepath.Join(root, "package-lock.json"), `{"packages":{"node_modules/lodash":{"version":"4.17.20"}}}`)
+
+	ui := &helpers.StubUI{}
+	scanSvc := audit.NewService(
+		helpers.StubDetector{Workspace: shared.Workspace{Root: root, PackageManager: shared.PackageManagerNPM, Lockfiles: []string{filepath.Join(root, "package-lock.json")}, ManifestPath: filepath.Join(root, "package.json")}},
+		helpers.StubIgnore{},
+		helpers.StubRuleLoader{Version: "v1"},
+		helpers.StubRuleEvaluator{},
+		&helpers.StubOSV{},
+		&helpers.StubCache{},
+		helpers.StubClock{Value: time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)},
+		24*time.Hour,
+		[]ports.LockfileParser{audit.NewNPMParser(fs)},
+	)
+	rt := &Runtime{Root: root, TTY: false, CI: true, FS: fs, UI: ui, ScanSvc: scanSvc}
+	cmd := newRootCommand(rt)
+	cmd.SetArgs([]string{"scan", "--verbose"})
+
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("scan should succeed: %v", err)
+	}
+	if ui.ScanCalls != 1 {
+		t.Fatalf("expected scan render call, got %d", ui.ScanCalls)
+	}
+	if !ui.LastScanOpts.Verbose || ui.LastScanOpts.Format != shared.ScanRenderFormatText {
+		t.Fatalf("expected verbose text render options, got %+v", ui.LastScanOpts)
 	}
 }
 

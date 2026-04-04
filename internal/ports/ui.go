@@ -8,7 +8,7 @@ import (
 
 type PromptUI interface {
 	Confirm(ctx context.Context, prompt string) (bool, error)
-	RenderScan(ctx context.Context, result shared.ScanResult) error
+	RenderScan(ctx context.Context, result shared.ScanResult, options shared.ScanRenderOptions) error
 	RenderFixPlan(ctx context.Context, plan shared.FixPlan) error
 	RenderInstallAssessment(ctx context.Context, assessment shared.InstallAssessment) error
 	RenderOverview(ctx context.Context, overview shared.Overview, interactive bool) error
