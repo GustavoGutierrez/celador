@@ -100,6 +100,59 @@ func RenderedFindingCount(findings []Finding) int {
 	return len(RenderedFindingLines(findings))
 }
 
+func RenderedFindings(findings []Finding) []Finding {
+	type findingGroup struct {
+		severity Severity
+		base     string
+		items    []Finding
+	}
+
+	groups := make(map[string]*findingGroup, len(findings))
+	order := make([]string, 0, len(findings))
+
+	for _, finding := range findings {
+		base := formatFindingLine(finding)
+		key := renderedFindingKey(finding.Severity, base)
+		group, ok := groups[key]
+		if !ok {
+			group = &findingGroup{severity: finding.Severity, base: base}
+			groups[key] = group
+			order = append(order, key)
+		}
+		group.items = append(group.items, finding)
+	}
+
+	rendered := make([]Finding, 0, len(order))
+	for _, key := range order {
+		group := groups[key]
+		if len(group.items) == 1 {
+			rendered = append(rendered, group.items[0])
+			continue
+		}
+
+		detailed := map[string][]Finding{}
+		detailedOrder := make([]string, 0, len(group.items))
+		for _, finding := range group.items {
+			line := formatRenderedFinding(group.severity, formatFindingLineWithContext(finding, formatDuplicateFindingContext(finding)))
+			if _, ok := detailed[line]; !ok {
+				detailedOrder = append(detailedOrder, line)
+			}
+			detailed[line] = append(detailed[line], finding)
+		}
+
+		if len(detailedOrder) > 1 {
+			for _, line := range detailedOrder {
+				rendered = append(rendered, pickRenderedFindingRepresentative(detailed[line]))
+			}
+			continue
+		}
+
+		rendered = append(rendered, pickRenderedFindingRepresentative(group.items))
+	}
+
+	return rendered
+}
+
 func uniqueDetailedFindingLines(severity Severity, findings []Finding) []string {
 	seen := make(map[string]struct{}, len(findings))
 	lines := make([]string, 0, len(findings))
@@ -114,6 +167,34 @@ func uniqueDetailedFindingLines(severity Severity, findings []Finding) []string 
 	}
 
 	return lines
+}
+
+func pickRenderedFindingRepresentative(findings []Finding) Finding {
+	best := findings[0]
+	for _, finding := range findings[1:] {
+		if findingRank(finding) > findingRank(best) {
+			best = finding
+			continue
+		}
+		if findingRank(finding) == findingRank(best) && CompareVersions(best.FixVersion, finding.FixVersion) < 0 {
+			best = finding
+		}
+	}
+	return best
+}
+
+func findingRank(finding Finding) int {
+	rank := 0
+	if finding.Source == FindingSourceOSV {
+		rank += 4
+	}
+	if finding.PackageName != "" {
+		rank += 2
+	}
+	if finding.Fixable && finding.FixVersion != "" {
+		rank += 1
+	}
+	return rank
 }
 
 func renderedFindingKey(severity Severity, line string) string {

@@ -27,3 +27,23 @@ func TestRenderedFindingGroupsOrdersBySeverity(t *testing.T) {
 		t.Fatalf("expected deduplicated rendered finding count")
 	}
 }
+
+func TestRenderedFindingsSelectsRepresentativePerRenderedLine(t *testing.T) {
+	t.Parallel()
+
+	rendered := RenderedFindings([]Finding{
+		{ID: "GHSA-high", Source: FindingSourceOSV, Severity: SeverityHigh, PackageName: "lodash", Target: "node_modules/lodash", Summary: "Prototype pollution in merge helper", FixVersion: "4.17.21", Fixable: true},
+		{ID: "GHSA-high", Source: FindingSourceOSV, Severity: SeverityHigh, PackageName: "lodash", Target: "node_modules/lodash", Summary: "Prototype pollution in merge helper", FixVersion: "4.17.21", Fixable: true},
+		{ID: "GHSA-high", Source: FindingSourceOSV, Severity: SeverityHigh, PackageName: "lodash", Target: "packages/web/node_modules/lodash", Summary: "Prototype pollution in merge helper", FixVersion: "4.17.21", Fixable: true},
+	})
+
+	if len(rendered) != 2 {
+		t.Fatalf("expected two rendered representatives, got %d", len(rendered))
+	}
+	if rendered[0].Target != "node_modules/lodash" {
+		t.Fatalf("expected first representative to keep the first rendered context, got %q", rendered[0].Target)
+	}
+	if rendered[1].Target != "packages/web/node_modules/lodash" {
+		t.Fatalf("expected second representative to preserve distinct rendered context, got %q", rendered[1].Target)
+	}
+}

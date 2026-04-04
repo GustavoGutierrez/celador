@@ -29,13 +29,14 @@ func (s *Service) Plan(ctx context.Context, root string, tty bool, ci bool) (sha
 	if err != nil {
 		return shared.FixPlan{}, err
 	}
+	findings := shared.RenderedFindings(result.Findings)
 	manifestDeps, err := s.readManifestDependencies(ctx, result.Workspace.ManifestPath)
 	if err != nil {
 		return shared.FixPlan{}, err
 	}
 	ops := []shared.FixOperation{}
 	reasons := newReasonAccumulator()
-	for _, finding := range result.Findings {
+	for _, finding := range findings {
 		if reason, ok := classifyUnplannedFinding(finding); ok {
 			reasons.Add(reason, formatFindingExample(finding))
 			continue
