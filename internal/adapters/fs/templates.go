@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/GustavoGutierrez/celador/internal/ports"
@@ -13,6 +14,23 @@ const (
 	managedStart = "<!-- celador:start -->"
 	managedEnd   = "<!-- celador:end -->"
 )
+
+// ValidateWorkspacePath ensures the given path is within the workspace root.
+// Returns an error if the path attempts to escape the workspace directory.
+func ValidateWorkspacePath(path string, workspaceRoot string) error {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve path: %w", err)
+	}
+	absRoot, err := filepath.Abs(workspaceRoot)
+	if err != nil {
+		return fmt.Errorf("resolve workspace root: %w", err)
+	}
+	if !strings.HasPrefix(absPath, absRoot+string(filepath.Separator)) && absPath != absRoot {
+		return fmt.Errorf("path %q is outside workspace root %q", path, workspaceRoot)
+	}
+	return nil
+}
 
 func WriteManagedBlock(ctx context.Context, fs ports.FileSystem, path string, block string) error {
 	return WriteManagedSection(ctx, fs, path, managedStart, managedEnd, block)

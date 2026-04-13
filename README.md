@@ -47,6 +47,20 @@ Download the Windows release asset from GitHub Releases:
 - <https://github.com/GustavoGutierrez/celador/releases>
 - `celador_X.Y.Z_windows_amd64.zip`
 
+## 🔄 Updating
+
+### Homebrew (macOS and Linux)
+
+```bash
+brew update && brew upgrade GustavoGutierrez/celador/celador
+```
+
+### Windows
+
+Download the latest release asset from GitHub Releases and replace the existing binary:
+
+- <https://github.com/GustavoGutierrez/celador/releases>
+
 ## 🛠️ Quick Usage
 
 ```bash

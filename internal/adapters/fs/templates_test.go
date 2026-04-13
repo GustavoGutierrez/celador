@@ -107,3 +107,50 @@ func TestWriteManagedSection_ReplacesExistingBlock(t *testing.T) {
 		t.Errorf("expected written content to preserve prefix/suffix, got: %s", result)
 	}
 }
+
+func TestValidateWorkspacePath_AcceptsValidPaths(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		path  string
+		root  string
+	}{
+		{"direct child", "/root/file.txt", "/root"},
+		{"nested child", "/root/subdir/file.txt", "/root"},
+		{"same path", "/root", "/root"},
+		{"with trailing separator", "/root/", "/root"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateWorkspacePath(tt.path, tt.root)
+			if err != nil {
+				t.Errorf("expected no error, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateWorkspacePath_RejectsEscapeAttempts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		path string
+		root string
+	}{
+		{"parent dir", "/root/../etc/passwd", "/root"},
+		{"sibling dir", "/root/../sibling/file.txt", "/root"},
+		{"absolute escape", "/etc/passwd", "/root"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateWorkspacePath(tt.path, tt.root)
+			if err == nil {
+				t.Error("expected error for path escape, got nil")
+			}
+		})
+	}
+}

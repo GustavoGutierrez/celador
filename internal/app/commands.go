@@ -10,8 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func commandInteractivity(cmd *cobra.Command, rt *Runtime) (tty bool, ci bool, noInteractive bool, err error) {
-	noInteractive, err = cmd.Flags().GetBool("no-interactive")
+func commandInteractivity(cmd *cobra.Command, rt *Runtime) (bool, bool, bool, error) {
+	noInteractive, err := cmd.Flags().GetBool("no-interactive")
 	if err != nil {
 		return false, false, false, err
 	}
