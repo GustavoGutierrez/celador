@@ -65,12 +65,12 @@ type Runtime struct {
 	Parsers   []ports.LockfileParser
 	Clock     ports.Clock
 	Config    *viper.Viper
-	ScanSvc   *audit.Service
-	InitSvc   *workspace.Service
-	FixSvc    *fix.Service
-	InstallSv *install.Service
-	VersionSv *versioncore.Service
-	RootCmd   *cobra.Command
+	ScanSvc    *audit.Service
+	InitSvc    *workspace.Service
+	FixSvc     *fix.Service
+	InstallSvc *install.Service
+	VersionSvc *versioncore.Service
+	RootCmd    *cobra.Command
 }
 
 type Bootstrap struct {
@@ -113,7 +113,12 @@ func NewBootstrap(ctx context.Context, args []string) (*Bootstrap, error) {
 	pm := pmadapter.NewExecutor(os.Stdout, os.Stderr)
 	node := systemadapter.NewNodeVersionDetector()
 	patches := fsadapter.NewPatchWriter(fs)
-	executablePath, _ := os.Executable()
+	executablePath, err := os.Executable()
+	if err != nil {
+		// If we can't determine the executable path, Homebrew detection won't work
+		// but the rest of the application will function normally.
+		executablePath = ""
+	}
 	versionSvc := versioncore.NewService(currentVersion(), releasesadapter.NewGitHubLatestReleaseSource(), executablePath)
 	parsers := []ports.LockfileParser{
 		audit.NewNPMParser(fs),
@@ -141,13 +146,13 @@ func NewBootstrap(ctx context.Context, args []string) (*Bootstrap, error) {
 		Parsers:   parsers,
 		Clock:     clock,
 		Config:    config,
-		VersionSv: versionSvc,
+		VersionSvc: versionSvc,
 	}
 
 	rt.ScanSvc = audit.NewService(rt.Detector, rt.Ignore, rt.Rules, rt.Eval, rt.OSV, rt.Cache, rt.Clock, config.GetDuration("cache.ttl"), rt.Parsers)
 	rt.InitSvc = workspace.NewService(fs, detector, ignore, ui, node)
 	rt.FixSvc = fix.NewService(rt.ScanSvc, rt.Patches, fs, ui)
-	rt.InstallSv = install.NewService(detector, metadata, pm, ui)
+	rt.InstallSvc = install.NewService(detector, metadata, pm, ui)
 	rt.RootCmd = newRootCommand(rt)
 	rt.RootCmd.SetArgs(args)
 
@@ -176,12 +181,12 @@ func (b *Bootstrap) OverrideUI(ui ports.PromptUI) {
 
 func (b *Bootstrap) OverridePackageManager(pm ports.PackageManager) {
 	b.runtime.PM = pm
-	b.runtime.InstallSv = install.NewService(b.runtime.Detector, b.runtime.Metadata, pm, b.runtime.UI)
+	b.runtime.InstallSvc = install.NewService(b.runtime.Detector, b.runtime.Metadata, pm, b.runtime.UI)
 }
 
 func (b *Bootstrap) OverridePackageMetadata(meta ports.PackageMetadataSource) {
 	b.runtime.Metadata = meta
-	b.runtime.InstallSv = install.NewService(b.runtime.Detector, meta, b.runtime.PM, b.runtime.UI)
+	b.runtime.InstallSvc = install.NewService(b.runtime.Detector, meta, b.runtime.PM, b.runtime.UI)
 }
 
 type systemClock struct{}

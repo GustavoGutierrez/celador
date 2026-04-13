@@ -33,7 +33,10 @@ func (p *DenoParser) FileSystem() ports.FileSystem { return p.fs }
 func (p *NPMParser) Supports(path string) bool  { return filepath.Base(path) == "package-lock.json" }
 func (p *PNPMParser) Supports(path string) bool { return filepath.Base(path) == "pnpm-lock.yaml" }
 func (p *BunParser) Supports(path string) bool {
-	return filepath.Base(path) == "bun.lock" || filepath.Base(path) == "bun.lockb"
+	base := filepath.Base(path)
+	// bun.lockb is a binary format not yet supported by this parser.
+	// Only bun.lock (text format) is currently supported.
+	return base == "bun.lock"
 }
 func (p *DenoParser) Supports(path string) bool { return filepath.Base(path) == "deno.lock" }
 

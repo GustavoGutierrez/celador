@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -23,20 +24,36 @@ type Client struct {
 }
 
 func NewClient(ttl time.Duration) *Client {
+	endpoint := os.Getenv("CELADOR_OSV_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "https://api.osv.dev/v1/querybatch"
+	}
+
+	vulnAPI := os.Getenv("CELADOR_OSV_VULN_API")
+	if vulnAPI == "" {
+		vulnAPI = "https://api.osv.dev/v1/vulns"
+	}
+
 	return &Client{
 		httpClient: &http.Client{Timeout: 20 * time.Second},
 		ttl:        ttl,
-		endpoint:   "https://api.osv.dev/v1/querybatch",
-		vulnAPI:    "https://api.osv.dev/v1/vulns",
+		endpoint:   endpoint,
+		vulnAPI:    vulnAPI,
 	}
 }
 
 type osvAdvisory struct {
-	ID       string        `json:"id"`
-	Summary  string        `json:"summary"`
-	Details  string        `json:"details"`
-	Aliases  []string      `json:"aliases"`
-	Affected []osvAffected `json:"affected"`
+	ID       string           `json:"id"`
+	Summary  string           `json:"summary"`
+	Details  string           `json:"details"`
+	Aliases  []string         `json:"aliases"`
+	Severity []osvSeverityEntry `json:"severity"`
+	Affected []osvAffected    `json:"affected"`
+}
+
+type osvSeverityEntry struct {
+	Type  string  `json:"type"`
+	Score string  `json:"score"`
 }
 
 type osvAffected struct {
@@ -52,6 +69,11 @@ type osvRange struct {
 }
 
 func (c *Client) Query(ctx context.Context, deps []shared.Dependency) ([]shared.Finding, error) {
+	// Skip network call when there are no dependencies to query
+	if len(deps) == 0 {
+		return []shared.Finding{}, nil
+	}
+
 	queries := make([]map[string]any, 0, len(deps))
 	for _, dep := range deps {
 		queries = append(queries, map[string]any{
@@ -102,7 +124,7 @@ func (c *Client) Query(ctx context.Context, deps []shared.Dependency) ([]shared.
 			finding := shared.Finding{
 				ID:          advisory.ID,
 				Source:      shared.FindingSourceOSV,
-				Severity:    shared.SeverityHigh,
+				Severity:    parseOSVSeverity(advisory.Severity),
 				Target:      dep.Name,
 				PackageName: dep.Name,
 				Summary:     summarizeVulnerability(advisory.Summary, advisory.Details, dep.Name),
@@ -298,4 +320,45 @@ func isGenericVulnerabilitySummary(summary string, packageName string) bool {
 	}
 
 	return false
+}
+
+// parseOSVSeverity extracts severity from OSV advisory data.
+// OSV provides severity in the form of CVSS scores (CVSS_V2, CVSS_V3, CVSS_V31, CVSS_V4).
+// If no severity is available, it defaults to medium (not high to avoid alert fatigue).
+func parseOSVSeverity(entries []osvSeverityEntry) shared.Severity {
+	for _, entry := range entries {
+		// Only process CVSS-based severity entries
+		scoreType := strings.ToUpper(strings.TrimSpace(entry.Type))
+		if !strings.HasPrefix(scoreType, "CVSS") {
+			continue
+		}
+
+		// CVSS scores are numeric strings like "7.5", "9.8", etc.
+		scoreStr := strings.TrimSpace(entry.Score)
+		if scoreStr == "" {
+			continue
+		}
+
+		// Try to parse the score as a float
+		var score float64
+		if _, err := fmt.Sscanf(scoreStr, "%f", &score); err != nil {
+			continue
+		}
+
+		// Map CVSS scores to Celador severity levels
+		switch {
+		case score >= 9.0:
+			return shared.SeverityCritical
+		case score >= 7.0:
+			return shared.SeverityHigh
+		case score >= 4.0:
+			return shared.SeverityMedium
+		default:
+			return shared.SeverityLow
+		}
+	}
+
+	// Default to medium when no severity data is available
+	// (not high to avoid alert fatigue)
+	return shared.SeverityMedium
 }

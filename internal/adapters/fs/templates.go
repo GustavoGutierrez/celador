@@ -3,6 +3,7 @@ package fs
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/GustavoGutierrez/celador/internal/ports"
@@ -18,7 +19,13 @@ func WriteManagedBlock(ctx context.Context, fs ports.FileSystem, path string, bl
 }
 
 func WriteManagedSection(ctx context.Context, fs ports.FileSystem, path string, startMarker string, endMarker string, block string) error {
-	existing, _ := fs.ReadFile(ctx, path)
+	existing, err := fs.ReadFile(ctx, path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("read %s: %w", path, err)
+		}
+		existing = []byte{}
+	}
 	content := string(existing)
 	if strings.Contains(content, startMarker) && strings.Contains(content, endMarker) {
 		start := strings.Index(content, startMarker)

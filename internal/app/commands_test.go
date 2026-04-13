@@ -95,7 +95,7 @@ func TestScanCommandUsesRenderedFindingCountInExitMessage(t *testing.T) {
 		CI:        true,
 		FS:        fs,
 		UI:        ui,
-		VersionSv: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil),
+		VersionSvc: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil),
 		ScanSvc:   scanSvc,
 	}
 	cmd := newRootCommand(rt)
@@ -146,7 +146,7 @@ func TestScanCommandJSONFlagRendersStructuredOutput(t *testing.T) {
 		24*time.Hour,
 		[]ports.LockfileParser{audit.NewNPMParser(fs)},
 	)
-	rt := &Runtime{Root: root, TTY: false, CI: true, FS: fs, UI: ui, VersionSv: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil), ScanSvc: scanSvc}
+	rt := &Runtime{Root: root, TTY: false, CI: true, FS: fs, UI: ui, VersionSvc: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil), ScanSvc: scanSvc}
 	cmd := newRootCommand(rt)
 	cmd.SetArgs([]string{"scan", "--json"})
 
@@ -233,7 +233,7 @@ func TestScanCommandRendersBrandingHeaderInTextMode(t *testing.T) {
 		24*time.Hour,
 		[]ports.LockfileParser{audit.NewNPMParser(fs)},
 	)
-	rt := &Runtime{Root: root, TTY: false, CI: true, FS: fs, UI: ui, VersionSv: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil), ScanSvc: scanSvc}
+	rt := &Runtime{Root: root, TTY: false, CI: true, FS: fs, UI: ui, VersionSvc: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil), ScanSvc: scanSvc}
 	cmd := newRootCommand(rt)
 	cmd.SetArgs([]string{"scan"})
 
@@ -281,7 +281,7 @@ func TestFixCommandRendersBrandingHeaderBeforePlan(t *testing.T) {
 		FixVersion:  "4.17.21",
 		Fixable:     true,
 	}})
-	rt.VersionSv = versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil)
+	rt.VersionSvc = versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil)
 	cmd := newRootCommand(rt)
 	cmd.SetArgs([]string{"fix", "--diff"})
 
@@ -315,7 +315,7 @@ func TestVersionFlagPrintsCurrentVersionAndHomebrewUpgradeHint(t *testing.T) {
 	ui := &helpers.StubUI{}
 	rt := &Runtime{
 		UI:        ui,
-		VersionSv: versionServiceForTest("v1.2.3", "v1.3.0", "/opt/homebrew/Cellar/celador/1.2.3/bin/celador", nil),
+		VersionSvc: versionServiceForTest("v1.2.3", "v1.3.0", "/opt/homebrew/Cellar/celador/1.2.3/bin/celador", nil),
 	}
 	cmd := newRootCommand(rt)
 	cmd.SetArgs([]string{"--version"})
@@ -341,7 +341,7 @@ func TestVersionFlagStillPrintsCurrentVersionWhenCheckFails(t *testing.T) {
 	ui := &helpers.StubUI{}
 	rt := &Runtime{
 		UI:        ui,
-		VersionSv: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", errors.New("boom")),
+		VersionSvc: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", errors.New("boom")),
 	}
 	cmd := newRootCommand(rt)
 	cmd.SetArgs([]string{"--version"})
@@ -386,7 +386,7 @@ func TestInitCommandRendersBrandingHeaderBeforeChecklist(t *testing.T) {
 			ui,
 			&helpers.StubNodeVersionDetector{},
 		),
-		VersionSv: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil),
+		VersionSvc: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil),
 	}
 	cmd := newRootCommand(rt)
 	cmd.SetArgs([]string{"init"})
@@ -418,8 +418,8 @@ func TestInstallCommandAllowsCleanPreflightInCI(t *testing.T) {
 		TTY:       false,
 		CI:        true,
 		UI:        ui,
-		VersionSv: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil),
-		InstallSv: install.NewService(
+		VersionSvc: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil),
+		InstallSvc: install.NewService(
 			helpers.StubDetector{Workspace: shared.Workspace{Root: "/tmp/project", PackageManager: shared.PackageManagerNPM}},
 			&helpers.StubMetadata{Assessment: shared.InstallAssessment{Package: "left-pad", Risk: shared.SeverityLow, ShouldPrompt: false}},
 			pm,
@@ -469,7 +469,7 @@ func TestInstallCommandUsesIntentionalRiskApprovalPrompt(t *testing.T) {
 		TTY:  true,
 		CI:   false,
 		UI:   ui,
-		InstallSv: install.NewService(
+		InstallSvc: install.NewService(
 			helpers.StubDetector{Workspace: shared.Workspace{Root: "/tmp/project", PackageManager: shared.PackageManagerNPM}},
 			&helpers.StubMetadata{Assessment: shared.InstallAssessment{Package: "left-pad", Risk: shared.SeverityHigh, ShouldPrompt: true}},
 			pm,
@@ -509,7 +509,7 @@ func TestInstallCommandRendersFailedTimelineWhenPackageManagerFails(t *testing.T
 		TTY:  false,
 		CI:   true,
 		UI:   ui,
-		InstallSv: install.NewService(
+		InstallSvc: install.NewService(
 			helpers.StubDetector{Workspace: shared.Workspace{Root: "/tmp/project", PackageManager: shared.PackageManagerNPM}},
 			&helpers.StubMetadata{Assessment: shared.InstallAssessment{Package: "left-pad", Manager: shared.PackageManagerNPM, Risk: shared.SeverityLow, ShouldPrompt: false}},
 			pm,
@@ -540,7 +540,7 @@ func TestAboutCommandPrintsDeveloperProfileAndVersion(t *testing.T) {
 	ui := &helpers.StubUI{}
 	rt := &Runtime{
 		UI:        ui,
-		VersionSv: versionServiceForTest("v1.2.3", "v1.3.0", "/usr/local/bin/celador", nil),
+		VersionSvc: versionServiceForTest("v1.2.3", "v1.3.0", "/usr/local/bin/celador", nil),
 	}
 	cmd := newRootCommand(rt)
 	cmd.SetArgs([]string{"about"})
@@ -575,7 +575,7 @@ func TestTUICommandUsesInteractiveModeWhenTTYAvailable(t *testing.T) {
 		TTY:       true,
 		CI:        false,
 		UI:        ui,
-		VersionSv: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil),
+		VersionSvc: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil),
 	}
 	cmd := newRootCommand(rt)
 	cmd.SetArgs([]string{"tui"})
@@ -596,7 +596,7 @@ func TestTUICommandFallsBackToStaticModeInCI(t *testing.T) {
 		TTY:       false,
 		CI:        true,
 		UI:        ui,
-		VersionSv: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil),
+		VersionSvc: versionServiceForTest("v1.2.3", "", "/usr/local/bin/celador", nil),
 	}
 	cmd := newRootCommand(rt)
 	cmd.SetArgs([]string{"tui"})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -369,7 +370,13 @@ func (s *Service) ensureIgnoreFiles(ctx context.Context, ws shared.Workspace) er
 	}
 	for name, entries := range requiredEntries {
 		path := filepath.Join(ws.Root, name)
-		content, _ := s.fs.ReadFile(ctx, path)
+		content, err := s.fs.ReadFile(ctx, path)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("read %s: %w", name, err)
+			}
+			content = []byte{}
+		}
 		lines := string(content)
 		for _, required := range entries {
 			if !strings.Contains(lines, required) {
@@ -521,7 +528,13 @@ func (s *Service) installHook(ctx context.Context, ws shared.Workspace) error {
 }
 
 func (s *Service) ensureNPMHardening(ctx context.Context, path string) error {
-	body, _ := s.fs.ReadFile(ctx, path)
+	body, err := s.fs.ReadFile(ctx, path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("read .npmrc: %w", err)
+		}
+		body = []byte{}
+	}
 	settings := map[string]string{
 		"ignore-scripts":      "true",
 		"save-exact":          "true",
@@ -559,7 +572,13 @@ func (s *Service) ensureNPMHardening(ctx context.Context, path string) error {
 
 func (s *Service) ensureBunHardening(ctx context.Context, path string) error {
 	config := map[string]any{}
-	body, _ := s.fs.ReadFile(ctx, path)
+	body, err := s.fs.ReadFile(ctx, path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("read %s: %w", filepath.Base(path), err)
+		}
+		body = []byte{}
+	}
 	if len(body) > 0 {
 		if err := toml.Unmarshal(body, &config); err != nil {
 			return fmt.Errorf("parse %s: %w", path, err)
@@ -581,7 +600,13 @@ func (s *Service) ensureBunHardening(ctx context.Context, path string) error {
 
 func (s *Service) ensureDenoHardening(ctx context.Context, path string) error {
 	config := map[string]any{}
-	body, _ := s.fs.ReadFile(ctx, path)
+	body, err := s.fs.ReadFile(ctx, path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("read %s: %w", filepath.Base(path), err)
+		}
+		body = []byte{}
+	}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &config); err != nil {
 			return fmt.Errorf("parse %s: %w", path, err)
