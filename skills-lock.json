@@ -10,6 +10,16 @@
       "source": "jeffallan/claude-skills",
       "sourceType": "github",
       "computedHash": "c90a0798a12ea2d9191508439ec3191dd96713310615260ebe82ec5a09a4a434"
+    },
+    "celador-release": {
+      "source": "local",
+      "sourceType": "project",
+      "computedHash": "local-skill"
+    },
+    "celador-security": {
+      "source": "local",
+      "sourceType": "project",
+      "computedHash": "local-skill"
     }
   }
 }

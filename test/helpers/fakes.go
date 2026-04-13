@@ -166,6 +166,63 @@ type StubIgnore struct{ Rules []shared.IgnoreRule }
 
 func (s StubIgnore) Load(context.Context, string) ([]shared.IgnoreRule, error) { return s.Rules, nil }
 
+// FakeFileSystem is a test helper that implements ports.FileSystem with configurable functions.
+type FakeFileSystem struct {
+	ReadFileFn   func(ctx context.Context, path string) ([]byte, error)
+	WriteFileFn  func(ctx context.Context, path string, data []byte) error
+	StatFn       func(ctx context.Context, path string) (bool, error)
+	MkdirAllFn   func(ctx context.Context, path string) error
+	GlobFn       func(ctx context.Context, root string, patterns ...string) ([]string, error)
+	WalkFilesFn  func(ctx context.Context, root string, exts []string) ([]string, error)
+	ExecRootVal  string
+}
+
+func (f *FakeFileSystem) ReadFile(ctx context.Context, path string) ([]byte, error) {
+	if f.ReadFileFn != nil {
+		return f.ReadFileFn(ctx, path)
+	}
+	return nil, nil
+}
+
+func (f *FakeFileSystem) WriteFile(ctx context.Context, path string, data []byte) error {
+	if f.WriteFileFn != nil {
+		return f.WriteFileFn(ctx, path, data)
+	}
+	return nil
+}
+
+func (f *FakeFileSystem) Stat(ctx context.Context, path string) (bool, error) {
+	if f.StatFn != nil {
+		return f.StatFn(ctx, path)
+	}
+	return false, nil
+}
+
+func (f *FakeFileSystem) MkdirAll(ctx context.Context, path string) error {
+	if f.MkdirAllFn != nil {
+		return f.MkdirAllFn(ctx, path)
+	}
+	return nil
+}
+
+func (f *FakeFileSystem) Glob(ctx context.Context, root string, patterns ...string) ([]string, error) {
+	if f.GlobFn != nil {
+		return f.GlobFn(ctx, root, patterns...)
+	}
+	return nil, nil
+}
+
+func (f *FakeFileSystem) WalkFiles(ctx context.Context, root string, exts []string) ([]string, error) {
+	if f.WalkFilesFn != nil {
+		return f.WalkFilesFn(ctx, root, exts)
+	}
+	return nil, nil
+}
+
+func (f *FakeFileSystem) ExecRoot() string {
+	return f.ExecRootVal
+}
+
 type StubCache struct {
 	Scan        map[string]shared.ScanResult
 	OSV         map[string][]shared.Finding

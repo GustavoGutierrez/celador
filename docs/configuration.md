@@ -43,6 +43,67 @@ The cache fingerprint includes:
 - ignore rules
 - loaded rule version
 
+## Environment variables for enterprise and proxy configurations
+
+Celador supports environment variables to override default external API endpoints. These are **optional** — if not set, Celador uses its built-in defaults and behaves identically to previous versions.
+
+### OSV API endpoints
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CELADOR_OSV_ENDPOINT` | `https://api.osv.dev/v1/querybatch` | Batch vulnerability query endpoint |
+| `CELADOR_OSV_VULN_API` | `https://api.osv.dev/v1/vulns` | Individual vulnerability details endpoint |
+
+### Usage examples
+
+**Default behavior (no configuration needed):**
+
+```bash
+celador scan
+# Uses https://api.osv.dev endpoints automatically
+```
+
+**Corporate proxy (one-time override):**
+
+```bash
+CELADOR_OSV_ENDPOINT=https://proxy.company.com/osv/querybatch \
+CELADOR_OSV_VULN_API=https://proxy.company.com/osv/vulns \
+celador scan
+```
+
+**Persistent configuration (entire terminal session):**
+
+```bash
+export CELADOR_OSV_ENDPOINT=https://proxy.company.com/osv/querybatch
+export CELADOR_OSV_VULN_API=https://proxy.company.com/osv/vulns
+
+celador scan
+celador install express
+celador fix --diff
+```
+
+**Air-gapped environments (self-hosted OSV instance):**
+
+```bash
+export CELADOR_OSV_ENDPOINT=https://internal-osv.company.local/v1/querybatch
+export CELADOR_OSV_VULN_API=https://internal-osv.company.local/v1/vulns
+
+celador scan
+```
+
+### When to use these variables
+
+- **Corporate network with proxy**: Redirect OSV API calls through your organization's proxy server
+- **Air-gapped environments**: Use a self-hosted OSV instance that mirrors the public OSV database
+- **Testing/development**: Point to a mock OSV server for integration testing
+- **Rate limiting compliance**: Route through a cached internal endpoint to reduce external API calls
+
+### Important notes
+
+- These variables only affect OSV API endpoints. Other external services (npm registry, GitHub releases) use their own defaults.
+- Values must be full URLs including the protocol (`https://`).
+- If an endpoint is unreachable, Celador will return an error rather than silently falling back to defaults.
+
 ## Ignore behavior
 
 Ignore rules are loaded from `.celadorignore`.

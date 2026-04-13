@@ -167,8 +167,12 @@ if err != nil {
     return err
 }
 
-// Acceptable: When error truly doesn't matter (rare)
+// Acceptable ONLY when error truly doesn't matter and justified:
 _ = writer.Close() // Best-effort cleanup, error logged elsewhere
+
+// CRITICAL: In Celador, NEVER discard file read errors silently.
+// Distinguish between "file doesn't exist" (safe) and "read failed" (error).
+// See celador-security skill for mandatory error handling patterns.
 ```
 
 ## Concurrency Patterns
@@ -672,3 +676,44 @@ func (c *Counter) Increment() { c.n++ }        // Pointer receiver
 ```
 
 **Remember**: Go code should be boring in the best way - predictable, consistent, and easy to understand. When in doubt, keep it simple.
+
+## Security-Specific Patterns for Celador
+
+When working on Celador, the following additional patterns are **MANDATORY**:
+
+### File Read Error Handling
+
+```go
+// REQUIRED pattern for Celador
+content, err := fs.ReadFile(ctx, path)
+if err != nil {
+    if os.IsNotExist(err) {
+        content = []byte{} // Safe: file doesn't exist
+    } else {
+        return fmt.Errorf("read %s: %w", path, err) // Error: read failed
+    }
+}
+```
+
+### Input Validation
+
+```go
+// ALWAYS validate CLI arguments
+for _, arg := range args {
+    if strings.TrimSpace(arg) == "" {
+        return fmt.Errorf("argument cannot be empty or whitespace")
+    }
+}
+```
+
+### Path Traversal Prevention
+
+```go
+// VALIDATE paths against workspace root
+absPath, _ := filepath.Abs(path)
+if !strings.HasPrefix(absPath, wsRoot) {
+    return fmt.Errorf("path outside workspace")
+}
+```
+
+For complete security guidelines, invoke the **celador-security** skill.

@@ -12,8 +12,6 @@ import (
 	"github.com/GustavoGutierrez/celador/internal/ports"
 )
 
-type clock interface{ Now() time.Time }
-
 type Service struct {
 	detector ports.WorkspaceDetector
 	ignore   ports.IgnoreStore
@@ -21,12 +19,12 @@ type Service struct {
 	eval     ports.RuleEvaluator
 	osv      ports.VulnerabilitySource
 	cache    ports.ScanCache
-	clock    clock
+	clock    ports.Clock
 	osvTTL   time.Duration
 	parsers  []ports.LockfileParser
 }
 
-func NewService(detector ports.WorkspaceDetector, ignore ports.IgnoreStore, loader ports.RuleLoader, eval ports.RuleEvaluator, osv ports.VulnerabilitySource, cache ports.ScanCache, clock clock, osvTTL time.Duration, parsers []ports.LockfileParser) *Service {
+func NewService(detector ports.WorkspaceDetector, ignore ports.IgnoreStore, loader ports.RuleLoader, eval ports.RuleEvaluator, osv ports.VulnerabilitySource, cache ports.ScanCache, clock ports.Clock, osvTTL time.Duration, parsers []ports.LockfileParser) *Service {
 	return &Service{detector: detector, ignore: ignore, loader: loader, eval: eval, osv: osv, cache: cache, clock: clock, osvTTL: osvTTL, parsers: parsers}
 }
 
@@ -178,8 +176,6 @@ func sortFindings(findings []shared.Finding) {
 		return left < right
 	})
 }
-
-type fsProvider interface{ FS() ports.FileSystem }
 
 func parserFS(parsers []ports.LockfileParser) ports.FileSystem {
 	for _, parser := range parsers {

@@ -60,6 +60,17 @@ celador fix --yes
 celador install express
 ```
 
+## 🔧 Enterprise & Proxy Configuration
+
+Celador supports environment variables for corporate networks and air-gapped environments:
+
+| Variable | Purpose |
+|----------|---------|
+| `CELADOR_OSV_ENDPOINT` | Override OSV batch query endpoint |
+| `CELADOR_OSV_VULN_API` | Override individual vulnerability details endpoint |
+
+For full configuration details, see [`docs/configuration.md`](docs/configuration.md#environment-variables-for-enterprise-and-proxy-configurations).
+
 ## 🏗️ Architecture & Contributing
 
 Celador is a Go CLI built with **hexagonal architecture (ports and adapters)**.

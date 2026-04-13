@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	installcore "github.com/GustavoGutierrez/celador/internal/core/install"
 	"github.com/GustavoGutierrez/celador/internal/core/shared"
@@ -42,7 +43,7 @@ func newRootCommand(rt *Runtime) *cobra.Command {
 }
 
 func runVersionCommand(cmd *cobra.Command, rt *Runtime) error {
-	report := rt.VersionSv.Report(cmd.Context())
+	report := rt.VersionSvc.Report(cmd.Context())
 	rt.UI.Printf("celador %s\n", report.Current)
 	if !report.UpdateAvailable {
 		return nil
@@ -64,8 +65,8 @@ func renderBrandingHeader(ctx context.Context, rt *Runtime) error {
 }
 
 func runtimeVersion(rt *Runtime) string {
-	if rt != nil && rt.VersionSv != nil {
-		return rt.VersionSv.Current()
+	if rt != nil && rt.VersionSvc != nil {
+		return rt.VersionSvc.Current()
 	}
 	return currentVersion()
 }
@@ -203,12 +204,17 @@ func newInstallCommand(rt *Runtime) *cobra.Command {
 			if len(args) == 0 {
 				return NewExitError(2, "install requires at least one package argument")
 			}
+			for _, arg := range args {
+				if strings.TrimSpace(arg) == "" {
+					return NewExitError(2, "package name cannot be empty or whitespace")
+				}
+			}
 			tty, ci, noInteractive, err := commandInteractivity(cmd, rt)
 			if err != nil {
 				return err
 			}
 			yes, _ := cmd.Flags().GetBool("yes")
-			assessment, err := rt.InstallSv.Assess(cmd.Context(), rt.Root, tty, ci, args)
+			assessment, err := rt.InstallSvc.Assess(cmd.Context(), rt.Root, tty, ci, args)
 			if err != nil {
 				return err
 			}
@@ -248,7 +254,7 @@ func newInstallCommand(rt *Runtime) *cobra.Command {
 			if err := rt.UI.RenderInstallTimeline(cmd.Context(), timeline); err != nil {
 				return err
 			}
-			if err := rt.InstallSv.Execute(cmd.Context(), rt.Root, tty, ci, args); err != nil {
+			if err := rt.InstallSvc.Execute(cmd.Context(), rt.Root, tty, ci, args); err != nil {
 				timeline.ExecutionState = shared.InstallExecutionFailed
 				timeline.Failure = err.Error()
 				if renderErr := rt.UI.RenderInstallTimeline(cmd.Context(), timeline); renderErr != nil {
@@ -324,11 +330,11 @@ func buildOverview(ctx context.Context, rt *Runtime) shared.Overview {
 		},
 		Documentation: []string{"README.md", "docs/commands.md", "docs/configuration.md", "docs/security-rules.md"},
 	}
-	if rt == nil || rt.VersionSv == nil {
+	if rt == nil || rt.VersionSvc == nil {
 		overview.CurrentVersion = currentVersion()
 		return overview
 	}
-	report := rt.VersionSv.Report(ctx)
+	report := rt.VersionSvc.Report(ctx)
 	overview.CurrentVersion = report.Current
 	overview.LatestVersion = report.Latest
 	overview.UpdateAvailable = report.UpdateAvailable

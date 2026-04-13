@@ -11,17 +11,15 @@ import (
 	"github.com/GustavoGutierrez/celador/internal/ports"
 )
 
-type clock interface{ Now() time.Time }
-
 type FileCache struct {
 	fs   ports.FileSystem
 	root string
-	clk  clock
+	clk  ports.Clock
 }
 
 const cacheSchemaVersion = 2
 
-func NewFileCache(fs ports.FileSystem, root string, clk clock) *FileCache {
+func NewFileCache(fs ports.FileSystem, root string, clk ports.Clock) *FileCache {
 	return &FileCache{fs: fs, root: root, clk: clk}
 }
 

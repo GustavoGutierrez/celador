@@ -99,6 +99,11 @@ Key properties demonstrated: bounded goroutine lifetime via `ctx`, error propaga
 - Use `X | Y` union constraints for generics (Go 1.18+)
 - Propagate errors with fmt.Errorf("%w", err)
 - Run race detector on tests (-race flag)
+- **Validate all CLI input** (empty strings, whitespace, path traversal)
+- **Use public port interfaces** (ports.Clock, ports.Logger) - never redefine private duplicates
+- **Prevent path traversal** in file operations
+- **Distinguish "file not found" from "read failed"** - never discard read errors silently
+- **Invoke celador-security skill** when implementing security-critical features
 
 ### MUST NOT DO
 - Ignore errors (avoid _ assignment without justification)
@@ -108,6 +113,10 @@ Key properties demonstrated: bounded goroutine lifetime via `ctx`, error propaga
 - Use reflection without performance justification
 - Mix sync and async patterns carelessly
 - Hardcode configuration (use functional options or env vars)
+- **Discard file read errors** (check celador-security for mandatory patterns)
+- **Hard-code severity levels** when upstream APIs provide them
+- **Make external API calls** with empty data (wasteful)
+- **Accept user paths** without workspace root validation
 
 ## Output Templates
 
