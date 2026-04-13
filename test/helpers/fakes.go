@@ -228,6 +228,7 @@ type StubCache struct {
 	OSV         map[string][]shared.Finding
 	OSVExpiry   map[string]time.Time
 	PutOSVCalls int
+	OSVErr      error // If set, GetOSV returns this error
 }
 
 func (c *StubCache) GetScan(_ context.Context, key string) (shared.ScanResult, bool, error) {
@@ -256,6 +257,9 @@ func (c *StubCache) getOSV(key string) ([]shared.Finding, bool, time.Time, error
 }
 
 func (c *StubCache) GetOSV(_ context.Context, key string) ([]shared.Finding, bool, time.Time, error) {
+	if c.OSVErr != nil {
+		return nil, false, time.Time{}, c.OSVErr
+	}
 	return c.getOSV(key)
 }
 

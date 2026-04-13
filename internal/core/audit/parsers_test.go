@@ -7,6 +7,8 @@ import (
 
 	fsadapter "github.com/GustavoGutierrez/celador/internal/adapters/fs"
 	"github.com/GustavoGutierrez/celador/internal/core/shared"
+	"github.com/GustavoGutierrez/celador/internal/ports"
+	"github.com/GustavoGutierrez/celador/test/helpers"
 )
 
 func TestParsers(t *testing.T) {
@@ -36,5 +38,100 @@ func TestParsers(t *testing.T) {
 				t.Fatalf("expected dependencies for %s", tt.name)
 			}
 		})
+	}
+}
+
+func TestParserSupports(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		parser   interface{ Supports(string) bool }
+		path     string
+		expected bool
+	}{
+		{"npm_match", NewNPMParser(nil), "package-lock.json", true},
+		{"npm_no_match", NewNPMParser(nil), "pnpm-lock.yaml", false},
+		{"pnpm_match", NewPNPMParser(nil), "pnpm-lock.yaml", true},
+		{"pnpm_no_match", NewPNPMParser(nil), "package-lock.json", false},
+		{"bun_match", NewBunParser(nil), "bun.lock", true},
+		{"bun_lockb_no_match", NewBunParser(nil), "bun.lockb", false},
+		{"bun_no_match", NewBunParser(nil), "package.json", false},
+		{"deno_match", NewDenoParser(nil), "deno.lock", true},
+		{"deno_no_match", NewDenoParser(nil), "package-lock.json", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.parser.Supports(tt.path)
+			if result != tt.expected {
+				t.Errorf("Supports(%q) = %v, want %v", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParserFileSystem(t *testing.T) {
+	t.Parallel()
+	fakeFS := &helpers.FakeFileSystem{}
+	tests := []struct {
+		name   string
+		parser interface{ FileSystem() ports.FileSystem }
+	}{
+		{"npm", NewNPMParser(fakeFS)},
+		{"pnpm", NewPNPMParser(fakeFS)},
+		{"bun", NewBunParser(fakeFS)},
+		{"deno", NewDenoParser(fakeFS)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := tt.parser.FileSystem()
+			if fs != fakeFS {
+				t.Errorf("expected same filesystem, got different")
+			}
+		})
+	}
+}
+
+func TestParser_ParseReadError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fakeFS := &helpers.FakeFileSystem{
+		ReadFileFn: func(ctx context.Context, path string) ([]byte, error) {
+			return nil, context.Canceled
+		},
+	}
+	parser := NewNPMParser(fakeFS)
+	_, err := parser.Parse(ctx, shared.Workspace{}, "/root/package-lock.json")
+	if err == nil {
+		t.Fatal("expected error for read failure, got nil")
+	}
+}
+
+func TestParser_ParseInvalidJSON(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fakeFS := &helpers.FakeFileSystem{
+		ReadFileFn: func(ctx context.Context, path string) ([]byte, error) {
+			return []byte(`{invalid`), nil
+		},
+	}
+	parser := NewNPMParser(fakeFS)
+	_, err := parser.Parse(ctx, shared.Workspace{}, "/root/package-lock.json")
+	if err == nil {
+		t.Fatal("expected error for invalid JSON, got nil")
+	}
+}
+
+func TestParser_ParseInvalidYAML(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fakeFS := &helpers.FakeFileSystem{
+		ReadFileFn: func(ctx context.Context, path string) ([]byte, error) {
+			return []byte(`{invalid: yaml: [`), nil
+		},
+	}
+	parser := NewPNPMParser(fakeFS)
+	_, err := parser.Parse(ctx, shared.Workspace{}, "/root/pnpm-lock.yaml")
+	if err == nil {
+		t.Fatal("expected error for invalid YAML, got nil")
 	}
 }
