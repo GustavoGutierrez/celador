@@ -24,16 +24,20 @@ type Client struct {
 }
 
 func NewClient(ttl time.Duration) *Client {
-	endpoint := os.Getenv("CELADOR_OSV_ENDPOINT")
+	return NewClientWithEndpoint(
+		os.Getenv("CELADOR_OSV_ENDPOINT"),
+		os.Getenv("CELADOR_OSV_VULN_API"),
+		ttl,
+	)
+}
+
+func NewClientWithEndpoint(endpoint string, vulnAPI string, ttl time.Duration) *Client {
 	if endpoint == "" {
 		endpoint = "https://api.osv.dev/v1/querybatch"
 	}
-
-	vulnAPI := os.Getenv("CELADOR_OSV_VULN_API")
 	if vulnAPI == "" {
 		vulnAPI = "https://api.osv.dev/v1/vulns"
 	}
-
 	return &Client{
 		httpClient: &http.Client{Timeout: 20 * time.Second},
 		ttl:        ttl,

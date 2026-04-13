@@ -14,10 +14,24 @@ import (
 	"github.com/GustavoGutierrez/celador/internal/core/shared"
 )
 
-type RegistryInspector struct{ client *http.Client }
+type RegistryInspector struct {
+	client   *http.Client
+	registry string
+}
 
 func NewRegistryInspector() *RegistryInspector {
-	return &RegistryInspector{client: &http.Client{Timeout: 20 * time.Second}}
+	return &RegistryInspector{
+		client:   &http.Client{Timeout: 20 * time.Second},
+		registry: "https://registry.npmjs.org",
+	}
+}
+
+// NewRegistryInspectorWithEndpoint allows overriding the registry URL for testing.
+func NewRegistryInspectorWithEndpoint(registry string) *RegistryInspector {
+	return &RegistryInspector{
+		client:   &http.Client{Timeout: 20 * time.Second},
+		registry: registry,
+	}
 }
 
 func (r *RegistryInspector) InspectPackage(ctx context.Context, manager shared.PackageManager, pkg string) (shared.InstallAssessment, error) {
@@ -28,7 +42,7 @@ func (r *RegistryInspector) InspectPackage(ctx context.Context, manager shared.P
 		assessment.Reasons = append(assessment.Reasons, "deno install handoff is not supported in v1")
 		return assessment, nil
 	}
-	url := fmt.Sprintf("https://registry.npmjs.org/%s/latest", pkg)
+	url := fmt.Sprintf("%s/%s/latest", r.registry, pkg)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return assessment, err
