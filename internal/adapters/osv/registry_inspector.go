@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/GustavoGutierrez/celador/internal/core/shared"
@@ -114,33 +113,12 @@ func (r *RegistryInspector) inspectTarball(ctx context.Context, assessment *shar
 		if err != nil {
 			return err
 		}
-		if !strings.HasSuffix(header.Name, "package.json") {
+		if !isSourceFile(header.Name) {
 			continue
 		}
-		body, err := io.ReadAll(io.LimitReader(tr, 1<<20))
-		if err != nil {
+		if err := r.inspectSourceFile(tr, header.Name, assessment); err != nil {
 			return err
 		}
-		text := strings.ToLower(string(body))
-		if strings.Contains(text, "process.env") && (strings.Contains(text, "http://") || strings.Contains(text, "https://") || strings.Contains(text, "fetch(")) {
-			assessment.Risk = shared.SeverityHigh
-			assessment.ShouldPrompt = true
-			assessment.Reasons = append(assessment.Reasons, "package scripts reference env data and network activity")
-		}
-		if strings.Contains(text, "scripts") && strings.Contains(text, "postinstall") {
-			assessment.Risk = maxSeverity(assessment.Risk, shared.SeverityMedium)
-			assessment.ShouldPrompt = true
-			assessment.Reasons = append(assessment.Reasons, "package defines install-time scripts")
-		}
-		for _, token := range strings.Fields(text) {
-			if len(token) > 80 && isHexLike(token) {
-				assessment.Risk = maxSeverity(assessment.Risk, shared.SeverityMedium)
-				assessment.ShouldPrompt = true
-				assessment.Reasons = append(assessment.Reasons, "package contains long encoded strings")
-				break
-			}
-		}
-		return nil
 	}
 }
 
