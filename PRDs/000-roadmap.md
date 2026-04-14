@@ -44,7 +44,8 @@ Cada PRD es independiente y puede ejecutarse en cualquier orden, pero el orden s
 | 003 | ✅ Completado | 2026-04-13 | v0.4.2 |
 | 004 | ✅ Completado | 2026-04-13 | v0.4.3 |
 | 005 | ✅ Completado | 2026-04-13 | v0.4.4 |
-| 006 | ✅ Completado | 2026-04-13 | v0.4.5 |
+| 007 | ✅ Completado | 2026-04-14 | v0.5.0 |
+| 008 | ⬜ Pendiente (espera confirmación) | — | — |
 
 ---
 

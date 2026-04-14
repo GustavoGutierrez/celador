@@ -1,355 +1,251 @@
-# PRD-008: Sandbox de Comportamiento Ligero (Node.js Isolado)
+# PRP Ajustado — Sandbox de comportamiento portable, liviano y multiplataforma
 
-**Prioridad:** 🟡 Media — brecha zero-trust #2  
-**Impacto:** Alto — detecta protestware, malware condicional, ofuscación multi-capa  
-**Esfuerzo:** Alto  
-**Llamadas de red adicionales:** 0 (totalmente offline)  
-**Peso del binario:** +0MB (usa `node` del sistema)  
-**Breaking changes:** Ninguno — nuevo flag `--sandbox-scan`
+## Resumen ejecutivo
+La mejor alternativa **única** que maximiza portabilidad, bajo peso, rapidez y compatibilidad multiplataforma sin exigir configuración adicional del usuario es **un binario único en Go que embeba un motor JavaScript pequeño y portable como QuickJS, con instrumentación propia y política offline por defecto**.[cite:54][cite:60][cite:56]
 
----
+Frente a `goja`, QuickJS ofrece soporte mucho más moderno del lenguaje, incluyendo módulos y gran parte de ES2023, además de ser muy pequeño y embebible, con una huella de código especialmente reducida y arranque muy rápido.[cite:54][cite:60] Frente a Docker, Bubblewrap, NsJail o gVisor, esta opción sacrifica parte del aislamiento a nivel de sistema, pero gana claramente en experiencia de instalación, peso, velocidad de arranque y funcionamiento uniforme en Linux, macOS y Windows.[cite:34][cite:37][cite:48]
 
-## Problema Actual
+La recomendación del presente ajuste es: **cambiar el objetivo principal del PRP desde “sandbox fuerte del sistema” a “runtime aislado embebido, portable y offline-first”**, dejando el aislamiento por contenedores o herramientas del sistema como backend opcional futuro, no como requisito de la primera versión.[cite:34][cite:48][cite:54]
 
-El análisis estático no puede detectar código que solo se vuelve malicioso bajo ciertas condiciones:
+## Contexto del PRP original
+El PRP original identifica correctamente que el análisis estático no detecta protestware, malware condicional, ofuscación multicapa ni comportamientos activados en runtime, y propone `goja` o Node aislado como aproximaciones para cerrar esa brecha.[cite:1]
 
-| Ataque | Por qué el análisis estático falla | Ejemplo |
-|--------|-----------------------------------|---------|
-| **Protestware** | El código es benigno hasta una condición específica | `colors.js` — bucle infinito solo si el hostname contiene "palantir" |
-| **Malware condicional** | El payload se activa solo en producción | `ua-parser-js` — crypto-miner solo en ciertos entornos |
-| **Ofuscación multi-capa** | `eval(atob(base64(x)))` evade patrones simples | Cadenas de transformación que solo se resuelven en runtime |
-| **Código polimórfico** | Se transforma al ser leído | No hay patrón estático que coincida |
+También acierta al exigir operación offline, modo opt-in y scoring por señales de comportamiento, pero la propuesta original prioriza opciones que son más fuertes en Linux que en otros sistemas o que dependen de runtimes externos, lo que afecta la promesa de portabilidad sin configuración adicional para el usuario final.[cite:1][cite:34]
 
----
+## Evaluación de alternativas
 
-## Análisis de Opciones de Sandbox
+| Alternativa | Portabilidad | Peso | Velocidad | Compatibilidad JS | Config extra del usuario | Veredicto |
+|---|---|---:|---:|---|---|---|
+| `goja` embebido en Go | Muy alta[cite:52][cite:56] | Baja[cite:1][cite:52] | Alta[cite:52] | Media, centrado en ES5.1[cite:52] | No[cite:56] | Bueno pero corto para ecosistema moderno |
+| QuickJS embebido en Go/Rust | Muy alta[cite:54][cite:60] | Muy baja[cite:54][cite:60] | Muy alta[cite:54][cite:60] | Alta, con módulos y ES2023[cite:54][cite:60] | No[cite:54] | **Mejor opción única** |
+| Node + Docker/OCI | Alta funcional, no nativa homogénea[cite:40][cite:32] | Media/alta[cite:32][cite:40] | Media[cite:32] | Muy alta | Sí, requiere Docker[cite:40] | Potente pero no ideal para cero-config |
+| Bubblewrap / NsJail | Linux-only[cite:34][cite:37] | Baja | Alta | Depende de Node externo | Sí, depende del SO/herramienta[cite:34] | Excelente en Linux, no único multiplataforma |
+| gVisor | Limitada y más compleja[cite:48] | Media/alta[cite:48] | Media | Muy alta | Sí, requiere runtime/config[cite:48] | No para primera versión |
+| `deno_core` / V8 embebido | Alta teórica | Alta[cite:58] | Buena | Muy alta | No | Demasiado pesado/complejo |
 
-### Opción 1: Node.js nativo en contenedor efímero
+## Recomendación única
+La mejor opción única es un **binario autocontenido** escrito en **Go** o **Rust** que embeba **QuickJS** como motor de ejecución, aplique una API mínima controlada y capture señales de comportamiento sospechoso sin exponer al código analizado el sistema operativo real.[cite:54][cite:60]
 
-**Cómo funciona:**
-1. Extraer el tarball del paquete
-2. Crear un directorio temporal aislado
-3. Ejecutar `node --eval "require('./index.js')"` con timeout de 5 segundos
-4. Monitorear: procesos hijos, llamadas de red, acceso a filesystem, variables de entorno
-5. Matar el proceso y reportar hallazgos
+Go tiene una ventaja clara en distribución porque permite cross-compilar binarios para múltiples sistemas operativos de forma sencilla, lo que reduce fricción operativa para publicar releases en Linux, macOS y Windows.[cite:56] Rust también es una buena opción para binarios portables y eficientes, pero el PRP original ya está orientado al ecosistema Go, por lo que continuar con Go reduce el costo de integración y mantenimiento.[cite:1][cite:56]
 
-**Dependencias:** `node` del sistema (ya requerido por Celador para JS/TS workspaces)
-**Peso adicional:** 0MB
-**Complejidad:** Media
+## Por qué QuickJS encaja mejor
+QuickJS fue diseñado para ser pequeño y embebible, con muy bajo tiempo de arranque y soporte moderno del lenguaje, lo que lo vuelve especialmente atractivo para correr ejecuciones breves e instrumentadas en un CLI de seguridad.[cite:54][cite:60]
 
-**Pros:**
-- Detecta comportamiento real (no patrones estimados)
-- Zero dependencias adicionales
-- Portable (donde haya node, funciona)
-- Offline completo
+A diferencia de `goja`, que declara foco en ECMAScript 5.1, QuickJS soporta módulos, async generators, proxies, BigInt y una porción mucho más actual del estándar, lo que mejora de forma importante la compatibilidad con paquetes modernos y reduce la necesidad de fallback inmediato.[cite:52][cite:54][cite:60]
 
-**Contras:**
-- Riesgo de seguridad: ejecutar código no confiable
-- Necesita aislamiento cuidadoso (sin acceso a red real, FS limitado)
-- Puede ser lento (5-10s por paquete)
-- No funciona sin node instalado
+A diferencia de Node real dentro de un contenedor, QuickJS no exige instalación previa de Docker ni runtimes del sistema, y tampoco hereda toda la superficie operativa de un entorno Node completo.[cite:32][cite:40][cite:54]
 
----
+## Qué se gana y qué se pierde
+### Ventajas
+- Un solo binario por plataforma, sin dependencia de Docker, Node, Bubblewrap o NsJail.[cite:54][cite:56]
+- Experiencia casi cero-config para el usuario final.[cite:56]
+- Arranque extremadamente rápido, útil para escanear muchos paquetes o hooks de instalación.[cite:54][cite:60]
+- Mejor compatibilidad moderna que `goja`.[cite:52][cite:54]
+- Operación offline natural, porque todo va embebido en el binario.[cite:54]
 
-### Opción 2: Análisis estático avanzado (AST parsing)
+### Desventajas
+- No reemplaza el aislamiento fuerte del sistema operativo para código verdaderamente hostil.[cite:34][cite:48]
+- No ejecuta addons nativos de Node ni reproduce el runtime completo de Node.[cite:1]
+- Algunas APIs específicas de Node deben ser simuladas o interceptadas manualmente.
 
-**Cómo funciona:**
-1. Parsear cada archivo JS/TS con un parser de JavaScript embebido
-2. Construir el AST (Abstract Syntax Tree)
-3. Analizar flujo de datos: ¿de dónde viene el argumento de eval()?
-4. Detectar ofuscación encadenada: eval(atob(base64(x)))
-5. Simular ejecución parcial sin ejecutar código
+## Ajuste estratégico recomendado
+La arquitectura debe cambiar de “sandbox del sistema primero” a “**micro-runtime embebido primero**”. El objetivo no sería ejecutar un paquete Node completo como si estuviera en producción, sino ejecutar el código publicado bajo un runtime controlado que permita detectar patrones de comportamiento de riesgo de forma consistente en todos los sistemas operativos.[cite:1][cite:54]
 
-**Dependencias:** Parser JS embebido (~500KB minificado)
-**Peso adicional:** +500KB
-**Complejidad:** Muy alta
+Eso preserva mucho mejor los objetivos que priorizaste: **portabilidad**, **multiplataforma**, **peso bajo**, **rapidez** y **mínima configuración del usuario final**.[cite:54][cite:56]
 
-**Pros:**
-- Seguro (no ejecuta código)
-- Detecta ofuscación multi-capa
-- Rápido una vez implementado
+## PRP ajustado
 
-**Contras:**
-- Parser JS completo en Go es muy complejo
-- No detecta comportamiento condicional
-- +500KB al binario
-- Implementación de meses
+## PRD-008B: Behavioral Sandbox Portable con QuickJS embebido
 
----
+### Prioridad
+Alta — resuelve la brecha de análisis dinámico con la mejor relación entre portabilidad, peso y experiencia de uso.[cite:1][cite:54]
 
-### Opción 3: WebAssembly sandbox (goja)
+### Impacto
+Alto — añade detección en runtime offline sin depender de herramientas del sistema ni runtimes externos.[cite:1][cite:54]
 
-**Cómo funciona:**
-1. Usar `goja` (intérprete JavaScript en Go puro)
-2. Ejecutar el código del paquete en un VM aislado
-3. Interceptar todas las llamadas a `require()`, `process`, `fs`, `http`
-4. Reportar comportamiento sospechoso
+### Esfuerzo
+Medio-Alto — más simple de distribuir que contenedores o backends OS-specific, pero requiere trabajo de instrumentación del runtime.[cite:54][cite:56]
 
-**Dependencias:** `github.com/dop251/goja` (~2MB)
-**Peso adicional:** +2MB
-**Complejidad:** Media-Alta
+### Problema
+El análisis estático no detecta lógica maliciosa activada en runtime, pero las soluciones basadas en Node del sistema, contenedores o herramientas Linux-only comprometen la portabilidad o exigen configuración adicional al usuario final.[cite:1][cite:34][cite:40]
 
-**Pros:**
-- Seguro (VM aislada, sin acceso al sistema real)
-- Go puro — sin dependencias externas al sistema
-- Portable — no necesita node instalado
-- Detecta comportamiento real
+### Objetivo
+Construir un runner de comportamiento offline, portable y multiplataforma que se distribuya como binario único y ejecute paquetes JavaScript en un entorno embebido e instrumentado para detectar señales de riesgo de seguridad.[cite:54][cite:56]
 
-**Contras:**
-- +2MB al binario
-- No soporta módulos nativos (.node)
-- No ejecuta C++ addons
-- Puede tener incompatibilidades con JS moderno
+### Propuesta técnica
+Implementar un `SandboxRunner` en Go que embeba QuickJS y cargue el código del paquete dentro de un runtime controlado con APIs mínimas y shims instrumentados.[cite:54][cite:60][cite:56]
 
----
+### Principios de diseño
+- Binario único por plataforma, sin dependencias externas en tiempo de ejecución.[cite:56]
+- Offline por defecto, sin egress de red.
+- Runtime embebido y controlado, no Node del sistema.
+- Política de capacidades mínimas: solo se expone al script lo necesario para el análisis.
+- Misma semántica funcional base en Linux, macOS y Windows.[cite:56]
+- Opt-in en la primera versión, igual que el PRP original propone para el sandbox dinámico.[cite:1]
 
-### Opción 4: Node.js con `--inspect` y monitoreo de syscalls
+### Alcance funcional
+- Cargar archivos JS del paquete y resolver imports ES modules compatibles con QuickJS.[cite:54][cite:60]
+- Interceptar intentos de red, lectura de entorno, acceso a filesystem lógico, timers persistentes, evaluación dinámica y patrones de dropper.[cite:1]
+- Detectar señales compuestas y producir un score de sospecha.[cite:1]
+- Ejecutar todo con timeout estricto y límites internos de memoria/CPU cuando el embedding lo permita.[cite:54]
 
-**Cómo funciona:**
-1. Ejecutar `node --inspect` en directorio temporal
-2. Usar `strace` (Linux) o `dtrace` (macOS) para monitorear syscalls
-3. Detectar: open(), connect(), execve(), kill()
-4. Timeout de 5 segundos
+### No objetivos de la primera versión
+- Compatibilidad total con Node.js.
+- Soporte para addons nativos `.node`.[cite:1]
+- Reproducción exacta del runtime de producción.
+- Aislamiento tipo contenedor o syscall sandboxing a nivel kernel.[cite:34][cite:48]
 
-**Dependencias:** `node` + `strace`/`dtrace` del sistema
-**Peso adicional:** 0MB
-**Complejidad:** Media
-
-**Pros:**
-- Comportamiento real a nivel de sistema
-- Zero dependencias adicionales
-- Detecta lo que el sandbox de VM puede no ver
-
-**Contras:**
-- `strace` no está disponible en todos los sistemas
-- No portable a Windows sin WSL
-- Más lento que goja
-
----
-
-## Recomendación: Opción 1 + Opción 3 (híbrido)
-
-**Estrategia:**
-1. **Primero:** Intentar con `goja` (VM aislada, sin riesgos, +2MB)
-2. **Si goja falla** (incompatibilidad con el JS): fallback a node sandbox con timeout
-3. **Si no hay node disponible:** reportar "sandbox unavailable" y volver a análisis estático
-
-**Justificación:**
-- `goja` cubre el 70% de los paquetes (JS puro, sin C++ addons)
-- Node sandbox cubre el 30% restante (nativos, addons, ESM moderno)
-- Peso total: +2MB (goja) + 0MB (node del sistema)
-- Portable: funciona sin node si el paquete es JS puro
-- Seguro: goja es VM aislada, node sandbox tiene timeout + directorio temporal
-
----
-
-## Diseño Técnico — goja sandbox
-
-### Dependencia única
-
-```bash
-go get github.com/dop251/goja@latest
-```
-
-**Tamaño:** ~2MB en el binario  
-**Mantenimiento:** Activo, 500+ stars, usado en producción por empresas
-
-### Arquitectura
-
-```
+### Arquitectura propuesta
+```text
 internal/adapters/sandbox/
-├── goja_runner.go     — VM aislada con interceptores
-├── node_runner.go     — Fallback a node con timeout
-├── monitor.go         — Monitoreo de comportamiento
-└── signals.go         — Definición de señales de riesgo
+├── runner.go              # interfaz principal
+├── quickjs_engine.go      # binding y lifecycle del runtime
+├── module_loader.go       # resolución de módulos del paquete
+├── bootstrap.js           # bootstrap instrumentado
+├── shims/
+│   ├── http.js            # shim que reporta intentos de red
+│   ├── fs.js              # shim de filesystem lógico
+│   ├── process.js         # shim de env/platform
+│   ├── timers.js          # monitoreo de loops/timers
+│   └── eval.js            # hooks de eval/Function
+├── monitor.go             # colector de eventos
+├── signals.go             # scoring de riesgo
+├── limits.go              # timeout y límites
+└── fixtures/              # paquetes de prueba
 ```
 
-### goja_runner.go
-
+### Interfaz principal
 ```go
+type SandboxRunner interface {
+    Run(ctx context.Context, pkgPath string, opts RunOptions) (*SandboxResult, error)
+}
+
+type RunOptions struct {
+    Timeout time.Duration
+    Strict bool
+    Offline bool
+    EntryStrategy string
+}
+
 type SandboxResult struct {
-    Executed        bool              // ¿Se ejecutó algo?
-    Duration        time.Duration     // Tiempo de ejecución
-    NetworkCalls    []NetworkAttempt  // Intentos de red
-    FileAccess      []FileAttempt     // Accesos a FS
-    EnvAccess       []string          // Variables de entorno leídas
-    ChildProcesses  []string          // Procesos hijos intentados
-    SuspiciousScore int               // Score de 0-100
-    Warnings        []string          // Alertas generadas
-}
-
-func RunInGoja(ctx context.Context, packagePath string) (*SandboxResult, error)
-```
-
-### Interceptores en goja
-
-| Función interceptada | Qué reporta | Ejemplo de alerta |
-|---------------------|-------------|-------------------|
-| `require('http')` | Intento de red | "Package attempted HTTP connection" |
-| `require('https')` | Intento de red | "Package attempted HTTPS connection" |
-| `require('fs')` | Acceso a filesystem | "Package read filesystem" |
-| `require('child_process')` | Ejecución de procesos | "Package spawned child process" |
-| `require('os')` | Info del sistema | "Package accessed OS info" |
-| `process.env` | Variables de entorno | "Package read env vars" |
-| `eval()` | Ejecución dinámica | "Package used eval() at runtime" |
-| `new Function()` | Code injection | "Package created dynamic function" |
-| `setInterval` con loop | Posible protestware | "Package created infinite timer" |
-
-### Señales de riesgo
-
-| Señal | Score | Ejemplo real |
-|-------|-------|--------------|
-| Intento de red a dominio externo | +30 | `ua-parser-js` crypto-miner |
-| `process.env` leído + red | +40 | Exfiltración de secrets |
-| `child_process.exec` | +50 | Ejecución de comandos |
-| `eval()` con string dinámico | +20 | Ofuscación |
-| `setInterval` infinito | +30 | `colors.js` protestware |
-| Acceso a `~/.ssh/` | +50 | Robo de claves SSH |
-| Write a temp + exec | +40 | Dropper pattern |
-| Solo console.log | +0 | Paquete benigno |
-
-### node_runner.go (fallback)
-
-```go
-func RunInNode(ctx context.Context, packagePath string) (*SandboxResult, error) {
-    // Create temp dir with limited permissions
-    // Run: node --eval "require('./index.js')" with 5s timeout
-    // Monitor: /proc/PID/net/tcp (Linux) or netstat
-    // Kill process after timeout
-    // Parse results
+    Engine          string
+    Executed        bool
+    Duration        time.Duration
+    TimedOut        bool
+    ModuleFormat    string
+    NetworkAttempts []string
+    EnvReads        []string
+    FileReads       []string
+    FileWrites      []string
+    DynamicExec     []string
+    Timers          []string
+    Warnings        []string
+    SuspiciousScore int
+    Verdict         string
 }
 ```
 
----
+### Estrategia de ejecución
+1. Leer `package.json` para inferir entrypoint, formato y señales iniciales.[cite:1]
+2. Resolver el archivo principal del paquete.
+3. Crear runtime QuickJS nuevo por ejecución.[cite:54][cite:60]
+4. Inyectar objetos globales y módulos shim controlados.
+5. Ejecutar bootstrap con timeout.
+6. Registrar eventos sospechosos.
+7. Calcular score y emitir resultado.
+8. Destruir runtime completamente.
 
-## Integración en Celador
+### Política de APIs expuestas
+El runtime no debe exponer acceso real a la red, sistema operativo ni filesystem completo. En su lugar, se expondrán stubs o shims que:
 
-### Nuevos flags
+- registren intención de uso,
+- devuelvan errores controlados,
+- permitan inferir comportamiento sin conceder privilegios reales.
 
+Ejemplos:
+- `fetch()` o `http.request()` registran “network attempt” y fallan en modo offline.
+- `process.env` devuelve un mapa vacío o un subconjunto sintético, registrando qué claves intenta leer el paquete.[cite:1]
+- `fs.readFile()` solo puede leer el árbol lógico del paquete ya cargado para análisis.
+- `eval` y `Function` generan señal explícita.[cite:1]
+
+### Heurísticas iniciales
+- lectura de variables de entorno,[cite:1]
+- import o uso de primitivas de red,[cite:1]
+- timers repetitivos o loops de larga duración,[cite:1]
+- construcción dinámica de código,
+- cadenas de decodificación en runtime,
+- escritura + ejecución lógica posterior,
+- fingerprinting del entorno.
+
+### Compatibilidad multiplataforma
+La compatibilidad se logra porque QuickJS es embebible y el binario principal puede compilarse para Linux, macOS y Windows sin exigir herramientas adicionales en la máquina del usuario.[cite:54][cite:56][cite:60]
+
+La promesa debe ser “mismo CLI, mismo comportamiento base, mismo formato de salida” en los tres sistemas operativos, con diferencias mínimas solo en empaquetado de release.[cite:56]
+
+### Distribución
+- `celador-linux-amd64`
+- `celador-linux-arm64`
+- `celador-darwin-amd64`
+- `celador-darwin-arm64`
+- `celador-windows-amd64.exe`
+- `celador-windows-arm64.exe` si aplica.[cite:56]
+
+No debe requerirse Docker, Node ni configuración de sandbox del sistema para la primera versión.[cite:40][cite:56]
+
+### Roadmap de backends futuros
+Una vez estabilizado el runner portable, pueden añadirse backends opcionales:
+- `node-oci` para máxima fidelidad,
+- `linux-bwrap` para hardening adicional en Linux,
+- `strict-host` para entornos enterprise.[cite:34][cite:37][cite:40]
+
+Estos backends no sustituyen al runner portable; lo complementan.
+
+### CLI propuesta
 ```bash
-# Escaneo con sandbox (instala + ejecuta en aislamiento)
 celador install express --sandbox-scan
+celador scan ./node_modules/lodash --sandbox-engine quickjs
+```
 
-# Config en .celador.yaml
+```yaml
 sandbox:
   enabled: true
-  engine: goja  # goja | node | auto
+  engine: quickjs
   timeout: 5s
-  strict: false  # true = reject packages with suspicious behavior
+  offline: true
+  strict: false
 ```
 
-### Dónde se ejecuta
+### Criterios de aceptación
+- Funciona en Linux, macOS y Windows con binarios nativos por plataforma.[cite:56]
+- No requiere instalar Docker, Node ni utilidades del sistema.[cite:40][cite:56]
+- Mantiene operación offline total.[cite:1]
+- Detecta las señales principales definidas por el PRP original.[cite:1]
+- Añade mejor compatibilidad moderna que la alternativa `goja`.[cite:52][cite:54][cite:60]
+- Mantiene tiempo de arranque muy bajo y costo operacional mínimo.[cite:54][cite:60]
 
-- En `celador install`: antes de delegar al package manager
-- En `celador scan`: para paquetes ya instalados (analiza node_modules)
-- NO se ejecuta por defecto (es opt-in por el costo de tiempo)
+### Riesgos y mitigaciones
 
----
+| Riesgo | Impacto | Mitigación |
+|---|---|---|
+| Compatibilidad incompleta con APIs Node | Alto | Definir claramente alcance de primera versión y usar shims enfocados al análisis, no a ejecución completa |
+| Paquetes que dependan de addons nativos | Alto | Reportar “unsupported native addon” y caer a análisis estático mejorado[cite:1] |
+| Evasión por diferencias entre QuickJS y Node | Medio | Priorizar señales de intención y añadir backend opcional Node más adelante |
+| Complejidad de bindings | Medio | Encapsular motor detrás de interfaz limpia y tests de compatibilidad |
 
-## Plan de Tests
+### Tests propuestos
+- `TestQuickJSRunner_BenignPackage`
+- `TestQuickJSRunner_ESModulePackage`
+- `TestQuickJSRunner_NetworkAttempt`
+- `TestQuickJSRunner_EnvRead`
+- `TestQuickJSRunner_DynamicEval`
+- `TestQuickJSRunner_TimerLoop`
+- `TestQuickJSRunner_ObfuscatedLoader`
+- `TestQuickJSRunner_UnsupportedNativeAddon`
+- `TestQuickJSRunner_WindowsParity`
+- `TestQuickJSRunner_MacParity`
+- `TestQuickJSRunner_LinuxParity`
 
-| Test | Qué valida |
-|------|-----------|
-| `TestGojaRunner_BenignPackage` | Paquete benigno ejecuta sin alertas |
-| `TestGojaRunner_NetworkAttempt` | Detecta intento de llamada HTTP |
-| `TestGojaRunner_EnvAccess` | Detecta lectura de process.env |
-| `TestGojaRunner_ChildProcess` | Detecta spawn de child_process |
-| `TestGojaRunner_EvalAtRuntime` | Detecta eval() en ejecución |
-| `TestGojaRunner_InfiniteLoop` | Timeout funciona, mata proceso |
-| `TestGojaRunner_FileAccess` | Detecta lectura de filesystem |
-| `TestGojaRunner_CompositeSignals` | Score compuesto por múltiples señales |
-| `TestNodeRunner_Fallback` | Fallback a node cuando goja falla |
-| `TestNodeRunner_Timeout` | Node sandbox respeta timeout |
-| `TestSandboxIntegration_Protestware` | Detecta colors.js-like behavior |
-| `TestSandboxIntegration_CleanPackage` | No falsos positivos en express/lodash |
+### Veredicto del ajuste
+Si la prioridad #1 es **una sola estrategia portable, liviana, rápida y realmente multiplataforma**, la mejor decisión no es Docker, ni Bubblewrap, ni NsJail, ni siquiera `goja` como primera elección. La mejor base es **QuickJS embebido dentro de un binario Go** con runtime controlado e instrumentado.[cite:52][cite:54][cite:56][cite:60]
 
----
-
-## Criterios de Aceptación
-
-- [ ] goja VM ejecuta paquetes JS puros en aislamiento
-- [ ] Detecta al menos 8 tipos de comportamiento sospechoso
-- [ ] Timeout de 5s respetado siempre
-- [ ] Fallback a node cuando goja falla
-- [ ] 12+ tests con cobertura ≥80%
-- [ ] Flag `--sandbox-scan` documentado
-- [ ] No ejecuta sandbox por defecto (opt-in)
-- [ ] `go test ./...` pasa sin fallos
-- [ ] Sin falsos positivos en express, lodash, react
-
----
-
-## Archivos a Modificar/Crear
-
-| Archivo | Acción |
-|---------|--------|
-| `internal/adapters/sandbox/goja_runner.go` | **Crear** |
-| `internal/adapters/sandbox/node_runner.go` | **Crear** |
-| `internal/adapters/sandbox/monitor.go` | **Crear** |
-| `internal/adapters/sandbox/signals.go` | **Crear** |
-| `internal/adapters/sandbox/goja_runner_test.go` | **Crear** |
-| `internal/adapters/sandbox/node_runner_test.go` | **Crear** |
-| `internal/adapters/sandbox/monitor_test.go` | **Crear** |
-| `internal/ports/sandbox.go` | **Crear** — interfaz SandboxRunner |
-| `internal/app/commands.go` | Modificar — agregar flag `--sandbox-scan` |
-| `internal/app/bootstrap.go` | Modificar — wire SandboxRunner |
-
----
-
-## Riesgos y Mitigación
-
-| Riesgo | Probabilidad | Impacto | Mitigación |
-|--------|-------------|---------|------------|
-| goja no soporta ESM modules | Media | Alto | Fallback a node sandbox |
-| goja no soporta syntax moderno (top-level await) | Media | Medio | Fallback a node sandbox |
-| Ejecutar malware en sandbox escapa | Baja | Crítico | goja es VM pura — no puede escapar |
-| Node sandbox no tiene strace en macOS | Alta | Medio | Usar node --inspect en lugar de strace |
-| Falsos positivos en paquetes legítimos | Media | Alto | Whitelist de paquetes conocidos, thresholds ajustables |
-| Performance degradation | Alta | Medio | Opt-in solamente, no default |
-
----
-
-## Estimación
-
-| Fase | Tiempo |
-|------|--------|
-| Tests (TDD) | 3 horas |
-| goja sandbox core | 4 horas |
-| node sandbox fallback | 3 horas |
-| Signal system | 2 horas |
-| Integración en CLI | 1 hora |
-| Testing con paquetes reales | 2 horas |
-| **Total** | **~15 horas** |
-
----
-
-## Comparación de Complejidad con PRDs Anteriores
-
-| PRD | Horas estimadas | Dependencias nuevas | Peso binario | Complejidad |
-|-----|----------------|--------------------|--------------|-------------|
-| PRD-001 (tarball) | 5h | 0 | 0 | ⭐⭐ |
-| PRD-002 (lifecycle) | 1.5h | 0 | 0 | ⭐ |
-| PRD-003 (typosquatting) | 4h | 0 | +2KB | ⭐⭐ |
-| PRD-004 (SARIF) | 3h | 0 | 0 | ⭐ |
-| PRD-005 (SBOM) | 3.5h | 0 | 0 | ⭐⭐ |
-| PRD-006 (parallel) | 2.5h | 1 (errgroup) | 0 | ⭐ |
-| **PRD-007 (provenance)** | **5h** | **0** | **0** | **⭐⭐** |
-| **PRD-008 (sandbox)** | **15h** | **1 (goja)** | **+2MB** | **⭐⭐⭐⭐** |
-
----
-
-## Veredicto
-
-PRD-008 es **el PRD más complejo del roadmap** — 3x más esfuerzo que el siguiente más complejo.
-
-**Vale la pena si:**
-- Se quiere llegar a ~90%+ de detección de ataques (de ~70% actual)
-- Se acepta +2MB al binario y un opt-in para el usuario
-- Se quiere cerrar la brecha más grande contra Socket.dev
-
-**No vale la pena si:**
-- El binario debe mantenerse mínimo absoluto
-- No se quiere riesgo de ejecutar código (aunque goja es VM aislada)
-- El uso principal es offline total (goja funciona offline, node sandbox no)
-
-**Recomendación:** Implementar como **feature experimental opt-in** primero, medir adopción, y decidir si promover a estable.
+Ese enfoque no ofrece el aislamiento kernel-level de un contenedor, pero sí entrega la mejor relación entre cobertura práctica, peso, velocidad, facilidad de distribución y cero fricción para el usuario final, que es exactamente la prioridad definida en este ajuste.[cite:54][cite:56]
