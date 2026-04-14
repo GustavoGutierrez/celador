@@ -10,17 +10,21 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/GustavoGutierrez/celador/internal/core/shared"
+	"golang.org/x/sync/errgroup"
 )
 
 type Client struct {
-	httpClient *http.Client
-	ttl        time.Duration
-	endpoint   string
-	vulnAPI    string
+	httpClient   *http.Client
+	ttl          time.Duration
+	endpoint     string
+	vulnAPI      string
+	maxParallel  int
 }
 
 func NewClient(ttl time.Duration) *Client {
@@ -38,11 +42,18 @@ func NewClientWithEndpoint(endpoint string, vulnAPI string, ttl time.Duration) *
 	if vulnAPI == "" {
 		vulnAPI = "https://api.osv.dev/v1/vulns"
 	}
+	concurrency := 10
+	if env := os.Getenv("CELADOR_OSV_HYDRATION_CONCURRENCY"); env != "" {
+		if n, err := strconv.Atoi(env); err == nil && n > 0 {
+			concurrency = n
+		}
+	}
 	return &Client{
-		httpClient: &http.Client{Timeout: 20 * time.Second},
-		ttl:        ttl,
-		endpoint:   endpoint,
-		vulnAPI:    vulnAPI,
+		httpClient:  &http.Client{Timeout: 20 * time.Second},
+		ttl:         ttl,
+		endpoint:    endpoint,
+		vulnAPI:     vulnAPI,
+		maxParallel: concurrency,
 	}
 }
 
@@ -112,6 +123,43 @@ func (c *Client) Query(ctx context.Context, deps []shared.Dependency) ([]shared.
 	}
 	findings := []shared.Finding{}
 	hydrated := map[string]osvAdvisory{}
+	var mu sync.Mutex
+
+	// Collect all advisories that need hydration
+	type advisoryTask struct {
+		dep      shared.Dependency
+		advisory osvAdvisory
+	}
+	var tasks []advisoryTask
+	for i, result := range decoded.Results {
+		dep := deps[i]
+		for _, vuln := range result.Vulns {
+			if advisoryNeedsHydration(vuln) {
+				tasks = append(tasks, advisoryTask{dep: dep, advisory: vuln})
+			}
+		}
+	}
+
+	// Hydrate advisories in parallel
+	if len(tasks) > 0 {
+		g, ctx := errgroup.WithContext(ctx)
+		g.SetLimit(c.maxParallel)
+		for _, task := range tasks {
+			task := task
+			g.Go(func() error {
+				details, err := c.fetchAdvisory(ctx, task.advisory.ID)
+				if err == nil {
+					mu.Lock()
+					hydrated[task.advisory.ID] = details
+					mu.Unlock()
+				}
+				return nil // Best-effort: don't fail the group for individual errors
+			})
+		}
+		_ = g.Wait()
+	}
+
+	// Build findings (sequential, safe)
 	for i, result := range decoded.Results {
 		dep := deps[i]
 		for _, vuln := range result.Vulns {
@@ -119,9 +167,6 @@ func (c *Client) Query(ctx context.Context, deps []shared.Dependency) ([]shared.
 			if advisoryNeedsHydration(advisory) {
 				if cached, ok := hydrated[advisory.ID]; ok {
 					advisory = cached
-				} else if details, err := c.fetchAdvisory(ctx, advisory.ID); err == nil {
-					hydrated[advisory.ID] = details
-					advisory = details
 				}
 			}
 			fixVersion := fixedVersionForPackage(advisory, dep.Name, dep.Version)

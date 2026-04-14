@@ -1,8 +1,6 @@
 module github.com/GustavoGutierrez/celador
 
-go 1.24.0
-
-toolchain go1.24.5
+go 1.25.0
 
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
@@ -11,6 +9,7 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
 	golang.org/x/mod v0.17.0
+	golang.org/x/sync v0.20.0
 	golang.org/x/term v0.30.0
 	gopkg.in/yaml.v3 v3.0.1
 )
