@@ -37,14 +37,14 @@ Cada PRD es independiente y puede ejecutarse en cualquier orden, pero el orden s
 
 ## Estado de Implementación
 
-| PRD | Estado | Fecha | Commit |
-|-----|--------|-------|--------|
-| 001 | ✅ Completado | 2026-04-13 | — |
-| 002 | ⬜ Pendiente | — | — |
-| 003 | ⬜ Pendiente | — | — |
-| 004 | ⬜ Pendiente | — | — |
-| 005 | ⬜ Pendiente | — | — |
-| 006 | ⬜ Pendiente | — | — |
+| PRD | Estado | Fecha | Tag |
+|-----|--------|-------|-----|
+| 001 | ✅ Completado | 2026-04-13 | v0.4.0 |
+| 002 | ✅ Completado | 2026-04-13 | v0.4.1 |
+| 003 | ✅ Completado | 2026-04-13 | v0.4.2 |
+| 004 | ✅ Completado | 2026-04-13 | v0.4.3 |
+| 005 | ✅ Completado | 2026-04-13 | v0.4.4 |
+| 006 | ✅ Completado | 2026-04-13 | v0.4.5 |
 
 ---
 
