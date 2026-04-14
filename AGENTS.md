@@ -9,6 +9,7 @@ Practical guidance for AI agents and contributors working in the Celador reposit
 - Prefer small, targeted changes that preserve the current architecture.
 - Follow existing repository structure and naming before introducing new patterns.
 - Treat release automation and Homebrew publishing as production-critical workflows.
+- **NEVER add `Co-authored-by:` trailers to commit messages.** All commits must have only the human author's sign-off. No AI or automated contributor attribution in commit metadata.
 
 ## Architecture
 

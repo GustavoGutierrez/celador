@@ -208,7 +208,7 @@ func TestInspectPackage_AxiosMaliciousPostinstall(t *testing.T) {
 	// Check that it detected the postinstall script
 	hasPostinstallReason := false
 	for _, reason := range assessment.Reasons {
-		if strings.Contains(reason, "install-time") || strings.Contains(reason, "scripts") {
+		if strings.Contains(reason, "postinstall") || strings.Contains(reason, "install-time") || strings.Contains(reason, "scripts") {
 			hasPostinstallReason = true
 		}
 	}

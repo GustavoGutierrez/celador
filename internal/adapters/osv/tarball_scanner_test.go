@@ -435,6 +435,72 @@ func TestInspectTarball_MjsAndCjsFiles(t *testing.T) {
 	}
 }
 
+func TestInspectTarball_LifecycleScripts_IndividuallyReported(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	tarball := helperTarball(t, map[string]string{
+		"package.json": `{"name":"test-pkg","version":"1.0.0","scripts":{"preinstall":"echo before","postinstall":"echo after","prepare":"echo prepare"}}`,
+		"index.js":     `module.exports = {};`,
+	})
+
+	server := helperMockServer(t, tarball)
+	defer server.Close()
+
+	inspector := NewRegistryInspectorWithEndpoint(server.URL)
+	assessment, err := inspector.InspectPackage(ctx, shared.PackageManagerNPM, "test-pkg")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should report each lifecycle script individually
+	reasons := assessment.Reasons
+	if !hasReason(reasons, "preinstall") {
+		t.Errorf("expected preinstall script detection, got: %v", reasons)
+	}
+	if !hasReason(reasons, "postinstall") {
+		t.Errorf("expected postinstall script detection, got: %v", reasons)
+	}
+	if !hasReason(reasons, "prepare") {
+		t.Errorf("expected prepare script detection, got: %v", reasons)
+	}
+}
+
+func TestInspectTarball_NoLifecycleScripts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	tarball := helperTarball(t, map[string]string{
+		"package.json": `{"name":"clean-pkg","version":"1.0.0","dependencies":{"lodash":"4.17.21"}}`,
+		"index.js":     `module.exports = require('lodash');`,
+	})
+
+	server := helperMockServer(t, tarball)
+	defer server.Close()
+
+	inspector := NewRegistryInspectorWithEndpoint(server.URL)
+	assessment, err := inspector.InspectPackage(ctx, shared.PackageManagerNPM, "clean-pkg")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// No lifecycle scripts should be flagged
+	for _, reason := range assessment.Reasons {
+		if strings.Contains(reason, "script") {
+			t.Errorf("expected no script alerts for clean package, got: %v", assessment.Reasons)
+		}
+	}
+}
+
+func hasReason(reasons []string, keyword string) bool {
+	for _, r := range reasons {
+		if strings.Contains(r, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestIsSourceFile(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

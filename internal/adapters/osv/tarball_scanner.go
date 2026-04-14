@@ -2,6 +2,7 @@ package osv
 
 import (
 	"archive/tar"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -60,13 +61,20 @@ func (r *RegistryInspector) inspectSourceFile(tr *tar.Reader, name string, asses
 
 	// Package.json gets specialized checks (lifecycle scripts, env+network)
 	if filepath.Base(name) == "package.json" {
-		if strings.Contains(text, "scripts") && (strings.Contains(text, "postinstall") ||
-			strings.Contains(text, "preinstall") ||
-			strings.Contains(text, `"prepare"`) ||
-			strings.Contains(text, `"install"`)) {
-			assessment.Risk = maxSeverity(assessment.Risk, shared.SeverityMedium)
-			assessment.ShouldPrompt = true
-			assessment.Reasons = append(assessment.Reasons, "package defines install-time scripts")
+		// Check each lifecycle script individually
+		lifecycleScripts := map[string]string{
+			"preinstall":  "preinstall",
+			"install":     "install",
+			"postinstall": "postinstall",
+			"prepare":     "prepare",
+			"prepublish":  "prepublish",
+		}
+		for scriptName, pattern := range lifecycleScripts {
+			if strings.Contains(text, fmt.Sprintf(`"%s"`, pattern)) {
+				assessment.Risk = maxSeverity(assessment.Risk, shared.SeverityMedium)
+				assessment.ShouldPrompt = true
+				assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("package defines %s script", scriptName))
+			}
 		}
 		if strings.Contains(text, "process.env") && (strings.Contains(text, "http://") || strings.Contains(text, "https://") || strings.Contains(text, "fetch(")) {
 			assessment.Risk = maxSeverity(assessment.Risk, shared.SeverityHigh)
